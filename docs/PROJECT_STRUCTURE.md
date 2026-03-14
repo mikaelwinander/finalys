@@ -1,4 +1,4 @@
-PROJECT STRUCTURE (SaaS Analytics Architecture)
+PROJECT STRUCTURE (FINALYS Architecture)
 
 This structure separates the system into three main parts:
 
@@ -11,7 +11,7 @@ The goal is to keep analytics logic, authentication, caching, and UI concerns cl
 
 ROOT PROJECT STRUCTURE
 
-/saas-analytics-app
+/finalys-app
 │
 ├── frontend
 ├── api
