@@ -5,5 +5,5 @@ import { requireTenant } from '../middleware/tenantMiddleware';
 
 const router = Router();
 router.post('/', requireAuth, requireTenant, simulationController.createSimulation);
-
+    
 export default router;
