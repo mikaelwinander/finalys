@@ -1,5 +1,5 @@
 // /frontend/src/services/pivotService.ts
-import { PivotRequestParams, PivotDataResponse } from '../types/pivot.types';
+import type { PivotRequestParams, PivotDataResponse } from '../types/pivot.types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 

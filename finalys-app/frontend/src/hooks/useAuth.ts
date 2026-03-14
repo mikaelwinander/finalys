@@ -1,8 +1,8 @@
 // /frontend/src/hooks/useAuth.ts
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User as FirebaseUser, getIdToken, getIdTokenResult } from 'firebase/auth';
+import { onAuthStateChanged, type User as FirebaseUser, getIdToken, getIdTokenResult } from 'firebase/auth';
 import { auth } from '../config/environment';
-import { AppUser, AuthContextState } from '../types/user.types';
+import type { AppUser, AuthContextState } from '../types/user.types';
 
 // Create the Context with a default empty state
 const AuthContext = createContext<AuthContextState | undefined>(undefined);

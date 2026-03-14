@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Base Colors */
+    --background: 210 40% 98%; /* slate-50 */
+    --foreground: 222 47% 11%; /* slate-900 */
+
+    /* Primary Brand Colors (e.g., Blue) */
+    --primary: 221 83% 53%;    /* blue-600 */
+    --primary-foreground: 210 40% 98%;
+
+    /* Secondary / Surface Colors */
+    --surface: 0 0% 100%;      /* white */
+    --surface-foreground: 222 47% 11%;
+    
+    /* Borders & Dividers */
+    --border: 214 32% 91%;     /* slate-200 */
+
+    /* Status Colors */
+    --destructive: 0 84% 60%;  /* red-500 */
+    --destructive-foreground: 210 40% 98%;
+    
+    /* Border Radius */
+    --radius: 0.5rem;
+  }
+
+  /* Optional: Dark mode setup for later */
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --surface: 222 47% 11%;
+    --surface-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;    /* blue-500 */
+    --primary-foreground: 222 47% 11%;
+    --border: 217 33% 17%;     /* slate-800 */
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}

@@ -1,6 +1,6 @@
 // /frontend/src/App.tsx
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 
 // Layout Components

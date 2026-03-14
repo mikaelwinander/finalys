@@ -1,7 +1,7 @@
 // /frontend/src/hooks/usePivotData.ts
 import { useState, useEffect } from 'react';
 import { pivotService } from '../services/pivotService';
-import { PivotRequestParams, PivotRow } from '../types/pivot.types';
+import type { PivotRequestParams, PivotRow } from '../types/pivot.types';
 // import { useAuth } from './useAuth'; // You will build this next to get the token
 
 interface UsePivotDataResult {
