@@ -1,5 +1,5 @@
 // /frontend/src/App.tsx
-import React from 'react';
+import type { FC } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 
@@ -9,7 +9,7 @@ import { AuthProvider } from './hooks/useAuth';
 // Pages
 // import DashboardPage from './pages/DashboardPage';
 
-const App: React.FC = () => {
+const App: FC = () => {
   return (
     <AuthProvider>
       <BrowserRouter>
