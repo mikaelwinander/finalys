@@ -1,6 +1,6 @@
 // /frontend/src/components/PivotTable/PivotTable.tsx
 import React from 'react';
-import { PivotRow } from '../../types/pivot.types';
+import type { PivotRow } from '../../types/pivot.types';
 
 export interface PivotTableProps {
   data: PivotRow[];
