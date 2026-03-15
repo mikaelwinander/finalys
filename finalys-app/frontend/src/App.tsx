@@ -1,27 +1,31 @@
 // /frontend/src/App.tsx
-import type {FC} from 'react';
-import { BrowserRouter } from 'react-router-dom';
+import { type FC } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 
-// Layout Components
-// import AppLayout from './components/Layout/AppLayout';
+// Layout & Pages
+import AppLayout from './components/Layout/AppLayout';
+import DashboardPage from './pages/DashboardPage';
 
-// Pages
-// import DashboardPage from './pages/DashboardPage';
+// Placeholder pages to prevent routing errors
+const PlaceholderPage: FC<{ title: string }> = ({ title }) => (
+  <div className="p-4"><h1 className="text-2xl font-bold">{title}</h1></div>
+);
 
 const App: FC = () => {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <div className="min-h-screen bg-background flex flex-col items-center justify-center">
-          <h1 className="text-3xl font-semibold text-foreground tracking-tight">
-            SaaS Analytics System
-          </h1>
-          <p className="mt-2 text-primary">
-            Authentication context initialized.
-          </p>
-        </div>
-        {/* Your routes will go here once the layout is built */}
+        <Routes>
+          {/* All routes live inside the AppLayout shell */}
+          <Route path="/" element={<AppLayout />}>
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="datasets" element={<PlaceholderPage title="Datasets (Versions)" />} />
+            <Route path="simulations" element={<PlaceholderPage title="Simulations" />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Route>
+        </Routes>
       </BrowserRouter>
     </AuthProvider>
   );

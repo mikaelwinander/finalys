@@ -4,11 +4,19 @@ import { authAdmin } from '../config/identityConfig';
 import { AuthenticatedRequest } from '../types/api.types';
 import { logger } from '../utils/logger';
 
-export const requireAuth = async (
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const requireAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  // --- LOCAL DEV BYPASS ---
+  if (process.env.NODE_ENV !== 'production') {
+    req.user = {
+      uid: 'local-dev-user',
+      tenantId: 'FIN', // This MUST match a tenant_id that actually exists in your BigQuery data
+      roles: ['admin']
+    };
+    next();
+    return;
+  }
+  // --- END BYPASS --- 
+
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

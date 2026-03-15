@@ -43,7 +43,7 @@ export const bigqueryService = {
         ${selectColumns},
         ${selectMeasures}
       FROM 
-        \`your-gcp-project.analytics_dataset.financial_data_view\`
+        \`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_data_view\`
       WHERE 
         tenant_id = @tenantId
         AND dataset_id = @datasetId

@@ -7,6 +7,10 @@
   packages = [
     pkgs.nodejs_22
   ];
+  
+  # Enable Docker
+  services.docker.enable = true;
+
   # Sets environment variables in the workspace
   env = {};
   idx = {
@@ -23,6 +27,9 @@
         default.openFiles = [ "finalys-app/frontend/src/App.tsx" "finalys-app/frontend/src/App.ts" "finalys-app/frontend/src/App.jsx" "finalys-app/frontend/src/App.js" ];
       };
       # To run something each time the workspace is (re)started, use the `onStart` hook
+      onStart = {
+        start-redis = "docker run --name local-redis -p 6379:6379 -d redis || docker start local-redis";
+      };
     };
     # Enable previews and customize configuration
     previews = {
