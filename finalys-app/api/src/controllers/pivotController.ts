@@ -1,3 +1,4 @@
+// /api/src/controllers/pivotController.ts
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/api.types';
 import { cacheKeyBuilder } from '../utils/cacheKeyBuilder';
@@ -51,7 +52,8 @@ export const pivotController = {
         measures
       };
 
-      const rows = await bigqueryService.getPivotAggregation<any>(bqRequest);
+      // Removed <any> here to strictly match the service definition
+      const rows = await bigqueryService.getPivotAggregation(bqRequest);
 
       // 6. Cache the result for future requests
       await cacheService.set(cacheKey, rows);
@@ -62,6 +64,34 @@ export const pivotController = {
     } catch (error: any) {
       logger.error('Error in getPivotData controller', { error: error.message });
       res.status(500).json({ error: 'Internal Server Error while processing analytics data' });
+    }
+  },
+
+  /**
+   * Handles GET requests for available datasets (versions).
+   */
+  async getAvailableDatasets(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const tenantId = req.user!.tenantId;
+      const cacheKey = `datasets:${tenantId}`;
+      
+      // Check Redis Cache
+      const cachedDatasets = await cacheService.get<string[]>(cacheKey);
+      if (cachedDatasets) {
+        res.status(200).json({ data: cachedDatasets });
+        return;
+      }
+
+      // We call the service here instead of using bqClient directly!
+      const datasets = await bigqueryService.getAvailableDatasets(tenantId);
+      
+      // Save to Cache for 1 hour (3600 seconds)
+      await cacheService.set(cacheKey, datasets, 3600);
+      
+      res.status(200).json({ data: datasets });
+    } catch (error: any) {
+      logger.error('Failed to fetch available datasets in controller', { error: error.message });
+      res.status(500).json({ error: 'Could not retrieve datasets' });
     }
   }
 };

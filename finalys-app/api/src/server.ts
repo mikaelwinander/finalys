@@ -1,41 +1,95 @@
 // /api/src/server.ts
 import express from 'express';
 import cors from 'cors';
-import pivotRoutes from './routes/pivotRoutes';
-import datasetRoutes from './routes/datasetRoutes';
-import simulationRoutes from './routes/simulationRoutes';
-import { errorHandler } from './middleware/errorHandler';
+import { bigqueryService, PivotQueryRequest } from './services/bigqueryService';
+import { cacheService } from './services/cacheService';
 import { logger } from './utils/logger';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '8080', 10);
 
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'], // Allow the Vite frontend
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5174', 'http://127.0.0.1:5174'], 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'], // Crucial for your Bearer token!
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-//app.use(cors());
 app.use(express.json());
 
-// Register API Routes
-app.use('/api', pivotRoutes);
-app.use('/api/datasets', datasetRoutes);
-app.use('/api/simulations', simulationRoutes);
+// --- ROUTES ---
 
-// Health check
-app.get('/health', (req, res) => { res.status(200).send('OK'); });
+// 1. Get Available Datasets Route
+app.get('/api/datasets', async (req, res) => {
+  try {
+    const tenantId = 'FIN'; // Hardcoded for current testing phase
+    const cacheKey = `datasets:${tenantId}`;
+    
+    // Check Redis Cache
+    const cachedDatasets = await cacheService.get<string[]>(cacheKey);
+    if (cachedDatasets) {
+      return res.json({ data: cachedDatasets });
+    }
 
-// Global Error Handler
-app.use(errorHandler);
+    // Fetch from BigQuery if cache misses
+    const datasets = await bigqueryService.getAvailableDatasets(tenantId);
+    
+    // Save to Cache for 1 hour (3600 seconds)
+    await cacheService.set(cacheKey, JSON.stringify(datasets), 3600);
+    
+    res.json({ data: datasets });
+  } catch (error) {
+    logger.error('Route /api/datasets failed', { error });
+    res.status(500).json({ error: 'Failed to load datasets' });
+  }
+});
 
+// 2. Get Pivot Data Route
+app.get('/api/pivot-data', async (req, res) => {
+  try {
+    const tenantId = 'FIN'; // Hardcoded for current testing phase
+    const datasetId = req.query.datasetId as string;
+    
+    const dimensions = JSON.parse((req.query.dimensions as string) || '[]');
+    const measures = JSON.parse((req.query.measures as string) || '[]');
+
+    if (!datasetId || !dimensions.length || !measures.length) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    const cacheKey = `pivot:${tenantId}:${datasetId}:${dimensions.join(',')}:${measures.join(',')}`;
+    
+    const cachedData = await cacheService.get<any[]>(cacheKey);
+    if (cachedData) {
+      logger.debug(`Cache HIT for key: ${cacheKey}`);
+      return res.json({ data: cachedData });
+    }
+
+    logger.debug(`Cache MISS for key: ${cacheKey}. Querying BigQuery...`);
+    
+    // --- THE FIX IS HERE ---
+    // We build the object exactly as the interface demands
+    const requestPayload: PivotQueryRequest = {
+      tenantId: tenantId,
+      userId: 'system', // Strictly matched to your interface definition
+      datasetId: datasetId,
+      dimensions: dimensions,
+      measures: measures
+    };
+
+    // We call the newly renamed function with the single payload object
+    const data = await bigqueryService.getPivotAggregation(requestPayload);
+    // -----------------------
+    
+    await cacheService.set(cacheKey, JSON.stringify(data), 3600);
+    
+    res.json({ data });
+  } catch (error) {
+    logger.error('Route /api/pivot-data failed', { error });
+    res.status(500).json({ error: 'Failed to load pivot data' });
+  }
+});
+
+// Force Express to bind to IPv4 correctly
 app.listen(PORT as number, '0.0.0.0', () => {
   logger.info(`SaaS API Layer listening on http://127.0.0.1:${PORT}`);
 });
-
-/*
-app.listen(PORT, () => {
-  logger.info(`SaaS API Layer listening on port ${PORT}`);
-});
-*/
