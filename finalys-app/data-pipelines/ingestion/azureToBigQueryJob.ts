@@ -18,7 +18,8 @@ const sqlConfig: sql.config = {
 
 const bqClient = new BigQuery({ projectId: 'snbx-efcpa-effectplan-vcdm' });
 const BQ_DATASET = 'finalys_dataset'; 
-const BQ_TABLE = 'financial_data_view';
+const BQ_TABLE_FACTS = 'financial_data_view';
+const BQ_TABLE_MAPPING = 'dimension_mapping'; // Cleaned up: Only the mapping table remains
 
 const TARGET_CLIENT_ID = process.env.TARGET_CLIENT_ID || 'FIN';
 
@@ -43,6 +44,13 @@ interface BqFinancialRow {
   amount: number;
 }
 
+interface BqDimMappingRow {
+  tenant_id: string;
+  dim_id: string;
+  dim_name: string;
+  position: number;
+}
+
 // --- ETL Pipeline ---
 export const runAzureToBigQuerySync = async () => {
   console.log(`[ETL] Starting ingestion job for ClientId: ${TARGET_CLIENT_ID}...`);
@@ -52,7 +60,11 @@ export const runAzureToBigQuerySync = async () => {
     pool = await sql.connect(sqlConfig);
     console.log('[ETL] Connected to Azure SQL.');
 
-    const result = await pool.request()
+    // ==========================================
+    // STEP 1: SYNC FINANCIAL FACTS
+    // ==========================================
+    console.log('[ETL] Step 1: Extracting Financial Facts...');
+    const factsResult = await pool.request()
       .input('clientId', sql.NVarChar, TARGET_CLIENT_ID)
       .query<BqFinancialRow>(`
         SELECT 
@@ -60,39 +72,58 @@ export const runAzureToBigQuerySync = async () => {
           pd.PlanVersionId AS dataset_id,
           pd.PeriodId AS period_id,
           pd.AmountTypeId AS amount_type_id,
-          pd.Dim01 AS dim01,
-          pd.Dim02 AS dim02,
-          pd.Dim03 AS dim03,
-          pd.Dim04 AS dim04,
-          pd.Dim05 AS dim05,
-          pd.Dim06 AS dim06,
-          pd.Dim07 AS dim07,
-          pd.Dim08 AS dim08,
-          pd.Dim09 AS dim09,
-          pd.Dim10 AS dim10,
-          pd.Dim11 AS dim11,
-          pd.Dim12 AS dim12,
+          pd.Dim01 AS dim01, pd.Dim02 AS dim02, pd.Dim03 AS dim03,
+          pd.Dim04 AS dim04, pd.Dim05 AS dim05, pd.Dim06 AS dim06,
+          pd.Dim07 AS dim07, pd.Dim08 AS dim08, pd.Dim09 AS dim09,
+          pd.Dim10 AS dim10, pd.Dim11 AS dim11, pd.Dim12 AS dim12,
           CAST(pd.Amount AS FLOAT) AS amount
         FROM dbo.xp_view_plandata pd
         WHERE pd.ClientId = @clientId
       `);
     
-    const rows = result.recordset;
-    console.log(`[ETL] Extracted ${rows.length} rows for ClientId '${TARGET_CLIENT_ID}'.`);
+    const factRows = factsResult.recordset;
+    console.log(`[ETL] Extracted ${factRows.length} fact rows.`);
 
-    if (rows.length === 0) {
-      console.log('[ETL] No data found. Exiting.');
-      return;
+    if (factRows.length > 0) {
+      console.log(`[ETL] Clearing old BigQuery facts for tenant ${TARGET_CLIENT_ID}...`);
+      await bqClient.query(`DELETE FROM \`${BQ_DATASET}.${BQ_TABLE_FACTS}\` WHERE tenant_id = '${TARGET_CLIENT_ID}'`);
+
+      console.log(`[ETL] Inserting fresh facts into BigQuery...`);
+      await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_FACTS).insert(factRows);
+      console.log(`[ETL] Successfully loaded facts.`);
     }
 
-    const table = bqClient.dataset(BQ_DATASET).table(BQ_TABLE);
+    // ==========================================
+    // STEP 2: SYNC DIMENSION MAPPING
+    // ==========================================
+    console.log('[ETL] Step 2: Extracting Dimension Mapping...');
+    const dimsResult = await pool.request()
+      .input('clientId', sql.NVarChar, TARGET_CLIENT_ID)
+      .query<BqDimMappingRow>(`
+        SELECT 
+          ClientId AS tenant_id,
+          LOWER(DimId) AS dim_id,    -- Converts 'Dim01' to 'dim01' to match the frontend
+          DimName AS dim_name,       -- Your exact column name!
+          Position AS position       -- Assuming this is called Position
+        FROM dbo.xp_view_dim_map
+        WHERE ClientId = @clientId
+      `);
     
-    console.log(`[ETL] Clearing old BigQuery data for tenant ${TARGET_CLIENT_ID}...`);
-    await bqClient.query(`DELETE FROM \`${BQ_DATASET}.${BQ_TABLE}\` WHERE tenant_id = '${TARGET_CLIENT_ID}'`);
+    const dimRows = dimsResult.recordset;
+    console.log(`[ETL] Extracted ${dimRows.length} dimension mapping rows.`);
 
-    console.log(`[ETL] Inserting fresh rows into BigQuery...`);
-    await table.insert(rows);
-    console.log(`[ETL] Successfully loaded ${rows.length} rows into BigQuery (${BQ_DATASET}.${BQ_TABLE}).`);
+    if (dimRows.length > 0) {
+      console.log(`[ETL] Clearing old BigQuery mappings for tenant ${TARGET_CLIENT_ID}...`);
+      await bqClient.query(`DELETE FROM \`${BQ_DATASET}.${BQ_TABLE_MAPPING}\` WHERE tenant_id = '${TARGET_CLIENT_ID}'`);
+
+      console.log(`[ETL] Inserting fresh dimension mappings into BigQuery...`);
+      await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_MAPPING).insert(dimRows);
+      console.log(`[ETL] Successfully loaded dimension mappings.`);
+    } else {
+      console.log('[ETL] No dimension mappings found to sync.');
+    }
+
+    console.log('[ETL] Pipeline completed successfully!');
 
   } catch (error) {
     console.error('[ETL] Pipeline failed:', error);

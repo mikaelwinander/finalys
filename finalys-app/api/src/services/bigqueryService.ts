@@ -6,8 +6,7 @@ const bqClient = new BigQuery({ projectId: 'snbx-efcpa-effectplan-vcdm' });
 
 // --- STRICT ALLOWLIST FOR SQL INJECTION PREVENTION ---
 const ALLOWED_DIMENSIONS = [
-  'period_id', 
-  'amount_type_id', 
+  'period_id', 'amount_type_id', 
   'dim01', 'dim02', 'dim03', 'dim04', 'dim05', 'dim06', 
   'dim07', 'dim08', 'dim09', 'dim10', 'dim11', 'dim12'
 ];
@@ -19,13 +18,13 @@ export interface PivotQueryRequest {
   datasetId: string;
   dimensions: string[];
   measures: string[];
+  filters?: Record<string, string>;
 }
 
 export const bigqueryService = {
-  // 1. Fetch Aggregated Pivot Data (Renamed to match controller and using the interface)
+  // 1. Fetch Aggregated Pivot Data
   async getPivotAggregation(request: PivotQueryRequest): Promise<any[]> {
-    // Destructure the properties from the request object
-    const { tenantId, datasetId, dimensions, measures } = request;
+    const { tenantId, datasetId, dimensions, measures, filters = {} } = request;
 
     try {
       const safeDimensions = dimensions.filter(dim => ALLOWED_DIMENSIONS.includes(dim));
@@ -39,6 +38,18 @@ export const bigqueryService = {
       const groupByColumns = safeDimensions.join(', ');
       const selectMeasures = safeMeasures.map(m => `SUM(${m}) AS ${m}`).join(', ');
 
+      // --- DYNAMIC FILTER LOGIC ---
+      let filterSql = '';
+      const queryParams: Record<string, any> = { tenantId, datasetId };
+      
+      Object.entries(filters).forEach(([key, value], index) => {
+        if (ALLOWED_DIMENSIONS.includes(key) && value) {
+          const paramName = `filterVal${index}`;
+          filterSql += ` AND ${key} = @${paramName}`;
+          queryParams[paramName] = value; 
+        }
+      });
+
       const query = `
         SELECT 
           ${selectColumns},
@@ -48,13 +59,14 @@ export const bigqueryService = {
         WHERE 
           tenant_id = @tenantId
           AND dataset_id = @datasetId
+          ${filterSql}
         GROUP BY 
           ${groupByColumns}
       `;
 
       const options = {
         query: query,
-        params: { tenantId, datasetId },
+        params: queryParams, 
       };
 
       const [job] = await bqClient.createQueryJob(options);
@@ -67,7 +79,7 @@ export const bigqueryService = {
     }
   },
 
-  // 2. Fetch Available Datasets (Versions) for a Tenant
+  // 2. Fetch Available Datasets (Versions)
   async getAvailableDatasets(tenantId: string): Promise<string[]> {
     try {
       const query = `
@@ -83,12 +95,33 @@ export const bigqueryService = {
       });
       
       const [rows] = await job.getQueryResults();
-      
-      // Extract the dataset IDs into a clean array of strings
       return rows.map(row => row.dataset_id);
     } catch (error) {
       logger.error('Failed to fetch available datasets', { error });
       throw new Error('Could not retrieve datasets');
+    }
+  },
+
+  // 3. Fetch Dimension Metadata Mapping (NEW!)
+  async getDimensionMapping(tenantId: string): Promise<any[]> {
+    try {
+      const query = `
+        SELECT dim_id, dim_name, position
+        FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.dimension_mapping\`
+        WHERE tenant_id = @tenantId
+        ORDER BY position ASC
+      `;
+
+      const [job] = await bqClient.createQueryJob({
+        query: query,
+        params: { tenantId },
+      });
+      
+      const [rows] = await job.getQueryResults();
+      return rows;
+    } catch (error) {
+      logger.error('Failed to fetch dimension mapping', { error });
+      throw new Error('Could not retrieve dimension mapping');
     }
   }
 };

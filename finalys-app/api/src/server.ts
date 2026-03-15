@@ -43,6 +43,33 @@ app.get('/api/datasets', async (req, res) => {
   }
 });
 
+// --- NEW: Get Dimension Mapping Route ---
+app.get('/api/dimensions', async (req, res) => {
+  try {
+    const tenantId = 'FIN'; // Hardcoded for current testing phase
+    const cacheKey = `dimensions:${tenantId}`;
+    
+    // Check Redis Cache
+    const cachedDims = await cacheService.get<any>(cacheKey);
+    if (cachedDims) {
+      // Safely parse the cache string back to an array
+      const parsedDims = typeof cachedDims === 'string' ? JSON.parse(cachedDims) : cachedDims;
+      return res.json({ data: parsedDims });
+    }
+
+    // Fetch from BigQuery if cache misses
+    const dims = await bigqueryService.getDimensionMapping(tenantId);
+    
+    // Save to Cache for 1 hour (3600 seconds)
+    await cacheService.set(cacheKey, JSON.stringify(dims), 3600);
+    
+    res.json({ data: dims });
+  } catch (error) {
+    logger.error('Route /api/dimensions failed', { error });
+    res.status(500).json({ error: 'Failed to load dimensions' });
+  }
+});
+
 // 2. Get Pivot Data Route
 app.get('/api/pivot-data', async (req, res) => {
   try {
@@ -51,38 +78,42 @@ app.get('/api/pivot-data', async (req, res) => {
     
     const dimensions = JSON.parse((req.query.dimensions as string) || '[]');
     const measures = JSON.parse((req.query.measures as string) || '[]');
+    // --- FIX 1: PARSE THE FILTERS FROM THE URL ---
+    const filters = req.query.filters ? JSON.parse(req.query.filters as string) : {};
 
     if (!datasetId || !dimensions.length || !measures.length) {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
 
-    const cacheKey = `pivot:${tenantId}:${datasetId}:${dimensions.join(',')}:${measures.join(',')}`;
+    // Include filters in the cache key so different filters don't share the same cache!
+    const cacheKey = `pivot:${tenantId}:${datasetId}:${dimensions.join(',')}:${measures.join(',')}:${JSON.stringify(filters)}`;
     
     const cachedData = await cacheService.get<any[]>(cacheKey);
     if (cachedData) {
       logger.debug(`Cache HIT for key: ${cacheKey}`);
-      return res.json({ data: cachedData });
+
+      const parsedData = typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData;
+
+      return res.json({ rows: parsedData }); 
     }
 
     logger.debug(`Cache MISS for key: ${cacheKey}. Querying BigQuery...`);
     
-    // --- THE FIX IS HERE ---
-    // We build the object exactly as the interface demands
     const requestPayload: PivotQueryRequest = {
       tenantId: tenantId,
-      userId: 'system', // Strictly matched to your interface definition
+      userId: 'system',
       datasetId: datasetId,
       dimensions: dimensions,
-      measures: measures
+      measures: measures,
+      filters: filters // Pass the parsed filters to BigQuery
     };
 
-    // We call the newly renamed function with the single payload object
     const data = await bigqueryService.getPivotAggregation(requestPayload);
-    // -----------------------
     
     await cacheService.set(cacheKey, JSON.stringify(data), 3600);
     
-    res.json({ data });
+    // --- FIX 2: RETURN AS 'rows' ---
+    res.json({ rows: data }); 
   } catch (error) {
     logger.error('Route /api/pivot-data failed', { error });
     res.status(500).json({ error: 'Failed to load pivot data' });

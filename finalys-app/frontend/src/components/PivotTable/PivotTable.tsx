@@ -1,10 +1,12 @@
 // /frontend/src/components/PivotTable/PivotTable.tsx
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { PivotRow } from '../../types/pivot.types';
 
 export interface PivotTableProps {
   data: PivotRow[];
-  dimensions: string[];
+  dimensions?: string[]; // Kept for backwards compatibility 
+  rowDimensions: string[]; // NEW
+  colDimensions: string[]; // NEW
   measures: string[];
   isLoading: boolean;
   error: string | null;
@@ -12,11 +14,54 @@ export interface PivotTableProps {
 
 export const PivotTable: React.FC<PivotTableProps> = ({
   data,
-  dimensions,
+  rowDimensions,
+  colDimensions,
   measures,
   isLoading,
   error,
 }) => {
+
+  // --- MATRIX CALCULATION LOGIC ---
+  // Memoized so it only recalculates when the data or dimensions actually change
+  const { rowHeaders, colHeaders, dataMatrix } = useMemo(() => {
+    if (!data || data.length === 0) {
+      return { rowHeaders: [], colHeaders: [], dataMatrix: {} };
+    }
+
+    const rowSet = new Set<string>();
+    const colSet = new Set<string>();
+    const matrix: Record<string, Record<string, number>> = {};
+    
+    // Default to the first measure (usually 'amount')
+    const measureKey = measures[0] || 'amount';
+
+    data.forEach(row => {
+      // 1. Generate compound keys for Rows and Columns (e.g., "Budget | 202401")
+      const rKey = rowDimensions.length 
+        ? rowDimensions.map(dim => row[dim] ?? '(Blank)').join(' | ') 
+        : 'All Rows';
+        
+      const cKey = colDimensions.length 
+        ? colDimensions.map(dim => row[dim] ?? '(Blank)').join(' | ') 
+        : 'Total';
+
+      rowSet.add(rKey);
+      colSet.add(cKey);
+
+      // 2. Map the value to the exact intersection in the matrix
+      if (!matrix[rKey]) matrix[rKey] = {};
+      
+      const val = Number(row[measureKey]) || 0;
+      matrix[rKey][cKey] = (matrix[rKey][cKey] || 0) + val; // Sum aggregation
+    });
+
+    return { 
+      rowHeaders: Array.from(rowSet).sort(), 
+      colHeaders: Array.from(colSet).sort(), 
+      dataMatrix: matrix 
+    };
+  }, [data, rowDimensions, colDimensions, measures]);
+
   // 1. Handle Error State
   if (error) {
     return (
@@ -47,51 +92,57 @@ export const PivotTable: React.FC<PivotTableProps> = ({
     );
   }
 
-  // 4. Render the Pivot Table
-  // The columns consist of all selected dimensions followed by all selected measures
-  const columns = [...dimensions, ...measures];
+  // 4. Render the Pivot Matrix
+  const cornerLabel = rowDimensions.length > 0 
+    ? rowDimensions.map(d => d.replace('dimension_', '').replace('_', ' ')).join(' / ') 
+    : 'Metrics';
 
   return (
     <div className="w-full overflow-x-auto bg-surface border border-border rounded-md shadow-sm">
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="bg-background border-b border-border">
-            {columns.map((col) => (
+            {/* Top-Left Corner Cell (Row Headers) */}
+            <th className="px-4 py-3 text-left font-semibold text-foreground whitespace-nowrap capitalize sticky left-0 bg-background z-10 border-r border-border">
+              {cornerLabel}
+            </th>
+            
+            {/* Dynamic Column Headers */}
+            {colHeaders.map((colKey) => (
               <th
-                key={col}
-                className="px-4 py-3 text-left font-semibold text-foreground whitespace-nowrap capitalize"
+                key={colKey}
+                className="px-4 py-3 text-right font-semibold text-foreground whitespace-nowrap"
               >
-                {/* In a production app, you would map internal names like "dimension_account" 
-                  to readable names using your Domain Dictionary 
-                */}
-                {col.replace('dimension_', '').replace('_', ' ')}
+                {colKey}
               </th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {data.map((row, rowIndex) => (
+          {rowHeaders.map((rowKey) => (
             <tr
-              key={rowIndex}
+              key={rowKey}
               className="hover:bg-background/50 transition-colors"
             >
-              {columns.map((col) => {
-                const cellValue = row[col];
+              {/* Row Header Cell (Sticky on scroll) */}
+              <td className="px-4 py-2 whitespace-nowrap font-medium text-foreground sticky left-0 bg-surface border-r border-border shadow-[1px_0_0_0_theme('colors.border')]">
+                {rowKey}
+              </td>
+              
+              {/* Intersecting Data Cells */}
+              {colHeaders.map((colKey) => {
+                const cellValue = dataMatrix[rowKey]?.[colKey];
                 
-                // Format measures as numbers (e.g., currency), and dimensions as strings
-                const isMeasure = measures.includes(col);
-                const displayValue = isMeasure && typeof cellValue === 'number'
+                const displayValue = cellValue !== undefined
                   ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(cellValue)
-                  : cellValue;
+                  : '-';
 
                 return (
                   <td
-                    key={`${rowIndex}-${col}`}
-                    className={`px-4 py-2 whitespace-nowrap text-surface-foreground ${
-                      isMeasure ? 'text-right font-mono' : 'text-left'
-                    }`}
+                    key={`${rowKey}-${colKey}`}
+                    className="px-4 py-2 whitespace-nowrap text-surface-foreground text-right font-mono"
                   >
-                    {displayValue ?? '-'}
+                    {displayValue}
                   </td>
                 );
               })}

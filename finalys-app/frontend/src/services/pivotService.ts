@@ -1,27 +1,27 @@
 // /frontend/src/services/pivotService.ts
 import type { PivotRequestParams, PivotDataResponse } from '../types/pivot.types';
 
-// The Vite Proxy will automatically route this to your backend!
 const API_BASE_URL = '/api';
 
 export const pivotService = {
-  /**
-   * Fetches summarized analytics data from the API layer.
-   */
   async getPivotData(params: PivotRequestParams, token: string): Promise<PivotDataResponse> {
-    // Convert arrays/objects to JSON strings for the GET request query parameters
     const queryParams = new URLSearchParams({
       datasetId: params.datasetId,
       dimensions: JSON.stringify(params.dimensions),
       measures: JSON.stringify(params.measures),
-      ...(params.filters && { filters: JSON.stringify(params.filters) }),
+      _t: Date.now().toString() // <-- NEW: Cache buster forces a fresh request
     });
+
+    // Only append filters if it actually has keys (prevents sending %7B%7D)
+    if (params.filters && Object.keys(params.filters).length > 0) {
+      queryParams.append('filters', JSON.stringify(params.filters));
+    }
 
     const response = await fetch(`${API_BASE_URL}/pivot-data?${queryParams.toString()}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`, // Identity Platform token
+        'Authorization': `Bearer ${token}`,
       },
     });
 
