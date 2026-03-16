@@ -31,5 +31,33 @@ export const pivotService = {
     }
 
     return response.json();
+  },
+
+  async getDimensionMapping(token: string): Promise<Record<string, string>> {
+    const response = await fetch(`${API_BASE_URL}/dimensions`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP Error ${response.status}`);
+    }
+
+    const json = await response.json();
+    
+    // Transform the array [{dim_id: 'dim01', dim_name: 'Konto'}] 
+    // into a dictionary: { 'dim01': 'Konto' }
+    const dictionary: Record<string, string> = {};
+    if (json.data && Array.isArray(json.data)) {
+      json.data.forEach((item: any) => {
+        dictionary[item.dim_id] = item.dim_name;
+      });
+    }
+    
+    return dictionary;
   }
 };
+

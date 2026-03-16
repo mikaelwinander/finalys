@@ -4,7 +4,6 @@ import { onAuthStateChanged, type User as FirebaseUser, getIdToken, getIdTokenRe
 import { auth } from '../config/environment';
 import type { AppUser, AuthContextState } from '../types/user.types';
 
-// Create the Context with a default empty state
 const AuthContext = createContext<AuthContextState | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -16,24 +15,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   useEffect(() => {
-    // Subscribe to Identity Platform auth state changes
     const unsubscribe = onAuthStateChanged(
       auth,
       async (firebaseUser: FirebaseUser | null) => {
         if (firebaseUser) {
           try {
-            // Retrieve the JWT token needed for the API layer
             const token = await getIdToken(firebaseUser);
-            
-            // Retrieve custom claims (where tenant_id is typically stored in SaaS setups)
             const tokenResult = await getIdTokenResult(firebaseUser);
-            const tenantId = (tokenResult.claims.tenant_id as string) || null;
+            
+            const clientId = (tokenResult.claims.client_id as string) || (tokenResult.claims.tenant_id as string) || null;
 
             const appUser: AppUser = {
               uid: firebaseUser.uid,
               email: firebaseUser.email,
               displayName: firebaseUser.displayName,
-              tenantId: tenantId,
+              clientId: clientId,
             };
 
             setState({ user: appUser, token, isLoading: false, error: null });
@@ -41,8 +37,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setState({ user: null, token: null, isLoading: false, error: error.message });
           }
         } else {
-          // User is signed out
-          setState({ user: null, token: null, isLoading: false, error: null });
+          // --- LOCAL DEV BYPASS ---
+          // If not logged in, but we are in local development, spoof a dev user/token
+          if (import.meta.env.DEV) {
+            console.warn("⚠️ Local Dev Mode: Bypassing Identity Platform Auth");
+            setState({ 
+              user: { uid: 'local-dev-user', email: 'dev@local.com', displayName: 'Dev User', clientId: 'FIN' }, 
+              token: 'local-dummy-token', 
+              isLoading: false, 
+              error: null 
+            });
+          } else {
+            // Production behavior: Actually log them out
+            setState({ user: null, token: null, isLoading: false, error: null });
+          }
         }
       },
       (error) => {
@@ -50,16 +58,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // Cleanup subscription on unmount
     return () => unsubscribe();
   }, []);
 
   return React.createElement(AuthContext.Provider, { value: state }, children);
 };
 
-/**
- * Custom hook to securely access authentication state and API tokens.
- */
 export const useAuth = (): AuthContextState => {
   const context = useContext(AuthContext);
   if (context === undefined) {

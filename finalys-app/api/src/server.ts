@@ -100,12 +100,12 @@ app.get('/api/pivot-data', async (req, res) => {
     logger.debug(`Cache MISS for key: ${cacheKey}. Querying BigQuery...`);
     
     const requestPayload: PivotQueryRequest = {
-      tenantId: tenantId,
+      clientId: tenantId,
       userId: 'system',
       datasetId: datasetId,
       dimensions: dimensions,
       measures: measures,
-      filters: filters // Pass the parsed filters to BigQuery
+      filters: filters
     };
 
     const data = await bigqueryService.getPivotAggregation(requestPayload);

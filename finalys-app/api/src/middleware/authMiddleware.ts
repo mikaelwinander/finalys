@@ -9,7 +9,7 @@ export const requireAuth = async (req: AuthenticatedRequest, res: Response, next
   if (process.env.NODE_ENV !== 'production') {
     req.user = {
       uid: 'local-dev-user',
-      tenantId: 'FIN', // This MUST match a tenant_id that actually exists in your BigQuery data
+      clientId: 'FIN', // Updated from tenantId to clientId
       roles: ['admin']
     };
     next();
@@ -33,7 +33,8 @@ export const requireAuth = async (req: AuthenticatedRequest, res: Response, next
     // 2. Extraction of identity information
     req.user = {
       uid: decodedToken.uid,
-      tenantId: decodedToken.tenant_id as string,
+      // Map Identity Platform's tenant_id claim (or a custom client_id claim) to clientId
+      clientId: (decodedToken.client_id || decodedToken.tenant_id) as string, 
       roles: (decodedToken.roles as string[]) || [],
       email: decodedToken.email,
     };

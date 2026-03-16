@@ -8,6 +8,7 @@ export interface PivotTableProps {
   rowDimensions: string[]; // NEW
   colDimensions: string[]; // NEW
   measures: string[];
+  dimensionMap?: Record<string, string>;
   isLoading: boolean;
   error: string | null;
 }
@@ -17,6 +18,7 @@ export const PivotTable: React.FC<PivotTableProps> = ({
   rowDimensions,
   colDimensions,
   measures,
+  dimensionMap = {}, // <-- Make sure this is also destructured here with a default empty object
   isLoading,
   error,
 }) => {
@@ -94,7 +96,7 @@ export const PivotTable: React.FC<PivotTableProps> = ({
 
   // 4. Render the Pivot Matrix
   const cornerLabel = rowDimensions.length > 0 
-    ? rowDimensions.map(d => d.replace('dimension_', '').replace('_', ' ')).join(' / ') 
+    ? rowDimensions.map(d => dimensionMap[d] || d).join(' / ') 
     : 'Metrics';
 
   return (

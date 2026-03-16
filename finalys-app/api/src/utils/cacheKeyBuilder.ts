@@ -1,3 +1,4 @@
+// /api/src/utils/cacheKeyBuilder.ts
 import crypto from 'crypto';
 
 /**
@@ -12,10 +13,10 @@ const hashObject = (obj: any): string => {
 export const cacheKeyBuilder = {
   /**
    * Builds the deterministic pivot cache key
-   * Format: pivot:{tenantId}:{datasetId}:{dimensionHash}:{filterHash}
+   * Format: pivot:{clientId}:{datasetId}:{dimensionHash}:{filterHash}
    */
   buildPivotKey(
-    tenantId: string, 
+    clientId: string, // Updated from tenantId
     datasetId: string, 
     dimensions: any, 
     filters: any
@@ -23,6 +24,7 @@ export const cacheKeyBuilder = {
     const dimHash = hashObject(dimensions);
     const filterHash = hashObject(filters);
     
-    return `pivot:${tenantId}:${datasetId}:${dimHash}:${filterHash}`;
+    // Updated format to strictly use client
+    return `pivot:${clientId}:${datasetId}:${dimHash}:${filterHash}`;
   }
 };

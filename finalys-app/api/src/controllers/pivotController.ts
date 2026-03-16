@@ -7,17 +7,12 @@ import { bigqueryService, PivotQueryRequest } from '../services/bigqueryService'
 import { logger } from '../utils/logger';
 
 export const pivotController = {
-  /**
-   * Handles GET requests for pivot table data.
-   * Expects query parameters: datasetId, dimensions, measures, filters.
-   */
   async getPivotData(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      // 1. Extract guaranteed tenant and user context from middleware
-      const tenantId = req.user!.tenantId;
+      // Changed from tenantId to clientId
+      const clientId = req.user!.clientId; 
       const userId = req.user!.uid;
 
-      // 2. Parse query parameters (handling stringified JSON arrays/objects from GET request)
       const datasetId = req.query.datasetId as string;
       const dimensions = req.query.dimensions ? JSON.parse(req.query.dimensions as string) : [];
       const measures = req.query.measures ? JSON.parse(req.query.measures as string) : [];
@@ -28,37 +23,31 @@ export const pivotController = {
         return;
       }
 
-      // 3. Construct deterministic cache key
-      const cacheKey = cacheKeyBuilder.buildPivotKey(tenantId, datasetId, dimensions, filters);
+      // Ensure cacheKeyBuilder is also updated to use clientId internally
+      const cacheKey = cacheKeyBuilder.buildPivotKey(clientId, datasetId, dimensions, filters);
 
-      // 4. Check Redis cache
       const cachedResult = await cacheService.get<any[]>(cacheKey);
 
       if (cachedResult) {
         logger.debug(`Cache HIT for key: ${cacheKey}`);
-        // Return result in milliseconds
         res.status(200).json({ rows: cachedResult });
         return;
       }
 
       logger.debug(`Cache MISS for key: ${cacheKey}. Querying BigQuery...`);
 
-      // 5. Query BigQuery if cache miss
       const bqRequest: PivotQueryRequest = {
-        tenantId,
+        clientId,
         userId,
         datasetId,
         dimensions,
         measures
       };
 
-      // Removed <any> here to strictly match the service definition
       const rows = await bigqueryService.getPivotAggregation(bqRequest);
 
-      // 6. Cache the result for future requests
       await cacheService.set(cacheKey, rows);
 
-      // 7. Return summarized result to frontend
       res.status(200).json({ rows });
 
     } catch (error: any) {
@@ -67,31 +56,53 @@ export const pivotController = {
     }
   },
 
-  /**
-   * Handles GET requests for available datasets (versions).
-   */
   async getAvailableDatasets(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const tenantId = req.user!.tenantId;
-      const cacheKey = `datasets:${tenantId}`;
+      const clientId = req.user!.clientId;
+      const cacheKey = `datasets:${clientId}`; // Updated cache key prefix
       
-      // Check Redis Cache
       const cachedDatasets = await cacheService.get<string[]>(cacheKey);
       if (cachedDatasets) {
         res.status(200).json({ data: cachedDatasets });
         return;
       }
 
-      // We call the service here instead of using bqClient directly!
-      const datasets = await bigqueryService.getAvailableDatasets(tenantId);
+      const datasets = await bigqueryService.getAvailableDatasets(clientId);
       
-      // Save to Cache for 1 hour (3600 seconds)
       await cacheService.set(cacheKey, datasets, 3600);
       
       res.status(200).json({ data: datasets });
     } catch (error: any) {
       logger.error('Failed to fetch available datasets in controller', { error: error.message });
-      res.status(500).json({ error: 'Could not retrieve datasets' });
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  /**
+   * Handles GET requests for dimension mapping metadata.
+   */
+  async getDimensionMapping(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const clientId = req.user!.clientId;
+      const cacheKey = `dimensions:${clientId}`;
+      
+      // 1. Check Redis Cache
+      const cachedMapping = await cacheService.get<any[]>(cacheKey);
+      if (cachedMapping) {
+        res.status(200).json({ data: cachedMapping });
+        return;
+      }
+
+      // 2. Query BigQuery via Service
+      const mapping = await bigqueryService.getDimensionMapping(clientId);
+      
+      // 3. Cache for 24 hours (metadata changes rarely)
+      await cacheService.set(cacheKey, mapping, 86400); 
+      
+      res.status(200).json({ data: mapping });
+    } catch (error: any) {
+      logger.error('Failed to fetch dimension mapping', { error: error.message });
+      res.status(500).json({ error: error.message });
     }
   }
 };

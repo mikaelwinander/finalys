@@ -1,8 +1,8 @@
 // /frontend/src/hooks/usePivotData.ts
 import { useState, useEffect } from 'react';
 import { pivotService } from '../services/pivotService';
+import { useAuth } from './useAuth';
 import type { PivotRequestParams, PivotRow } from '../types/pivot.types';
-// import { useAuth } from './useAuth'; // You will build this next to get the token
 
 interface UsePivotDataResult {
   data: PivotRow[];
@@ -16,9 +16,8 @@ export const usePivotData = (params: PivotRequestParams): UsePivotDataResult => 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Placeholder for your actual auth hook
-  // const { token } = useAuth(); 
-  const token = 'placeholder_token'; 
+  // Extract token from your React Context
+  const { token, isLoading: isAuthLoading } = useAuth(); 
 
   const fetchData = async () => {
     // Prevent fetching if core parameters or token are missing
@@ -31,7 +30,7 @@ export const usePivotData = (params: PivotRequestParams): UsePivotDataResult => 
 
     try {
       const result = await pivotService.getPivotData(params, token);
-      setData(result.rows); // The API sends a summarized response back to the frontend
+      setData(result.rows); 
     } catch (err: any) {
       setError(err.message || 'Failed to fetch pivot data');
       setData([]);
@@ -41,14 +40,15 @@ export const usePivotData = (params: PivotRequestParams): UsePivotDataResult => 
   };
 
   useEffect(() => {
+    if (isAuthLoading) return; // Wait for Identity Platform to initialize
     fetchData();
   }, [
     params.datasetId,
-    // Stringify arrays/objects for deep comparison in the dependency array
     JSON.stringify(params.dimensions),
     JSON.stringify(params.measures),
     JSON.stringify(params.filters),
-    token
+    token,
+    isAuthLoading
   ]);
 
   return { data, isLoading, error, refetch: fetchData };

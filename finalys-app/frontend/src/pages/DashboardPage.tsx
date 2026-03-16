@@ -1,7 +1,8 @@
 // /frontend/src/pages/DashboardPage.tsx
-import React, { type FC, useState, useEffect } from 'react';
+import React, { type FC, useState, useEffect, useMemo } from 'react';
 import { usePivotData } from '../hooks/usePivotData';
 import { PivotTable } from '../components/PivotTable/PivotTable';
+import { useAuth } from '../hooks/useAuth'; 
 
 // Standard measures
 const AVAILABLE_MEASURES = [
@@ -13,68 +14,101 @@ const FALLBACK_DIMENSIONS = [
   { id: 'period_id', label: 'Period' },
   { id: 'amount_type_id', label: 'Amount Type' },
   { id: 'dim01', label: 'Dim 01' },
+  { id: 'dim02', label: 'Dim 02' },
+  { id: 'dim03', label: 'Dim 03' },
 ];
 
 const DashboardPage: FC = () => {
+  // 1. Grab BOTH token and the loading state from Identity Platform
+  const { token, isLoading: isAuthLoading } = useAuth(); 
+
   const [availableDatasets, setAvailableDatasets] = useState<string[]>([]);
   const [datasetId, setDatasetId] = useState<string>('');
   
-  // NEW: State to hold our dynamic data dictionary from the database
   const [availableDimensions, setAvailableDimensions] = useState<{id: string, label: string}[]>(FALLBACK_DIMENSIONS);
 
-  // 4 Distinct Pivot Zones State
-  const [rowDims, setRowDims] = useState<string[]>(['dim01']);
-  const [colDims, setColDims] = useState<string[]>(['period_id']);
+  // NEW: State machine to prevent the infinite loading spinner
+  const [workspaceStatus, setWorkspaceStatus] = useState<'loading' | 'ready' | 'empty' | 'auth_error' | 'api_error'>('loading');
+
+  const [rowDims, setRowDims] = useState<string[]>([]);
+  const [colDims, setColDims] = useState<string[]>([]);
   const [filterDims, setFilterDims] = useState<string[]>([]); 
-  const [measures, setMeasures] = useState<string[]>(['amount']); 
+  const [measures, setMeasures] = useState<string[]>([]); 
 
   useEffect(() => {
-    // 1. Fetch available datasets
-    const fetchDatasets = async () => {
-      try {
-        const response = await fetch('/api/datasets');
-        const json = await response.json();
-        let safeArray = typeof json.data === 'string' ? JSON.parse(json.data) : json.data;
+    // Wait until Firebase Identity Platform is finished initializing
+    if (isAuthLoading) return;
 
-        if (safeArray?.length > 0) {
-          setAvailableDatasets(safeArray);
-          setDatasetId(safeArray[0]);
+    // Check if user is actually authenticated
+    if (!token) {
+      setWorkspaceStatus('auth_error');
+      return;
+    }
+
+    const initWorkspace = async () => {
+      try {
+        const headers: HeadersInit = { 'Authorization': `Bearer ${token}` };
+
+        // Run both fetches in parallel for speed
+        const [dsResponse, dimResponse] = await Promise.all([
+          fetch('/api/datasets', { headers }),
+          fetch('/api/dimensions', { headers })
+        ]);
+
+        if (!dsResponse.ok || !dimResponse.ok) {
+          throw new Error('API returned an error status');
         }
-      } catch (error) {
-        console.error('Failed to fetch datasets:', error);
-      }
-    };
 
-    // 2. Fetch the dynamic Dimension Dictionary!
-    const fetchDimensions = async () => {
-      try {
-        const response = await fetch('/api/dimensions');
-        const json = await response.json();
-        let safeArray = typeof json.data === 'string' ? JSON.parse(json.data) : json.data;
+        const dsJson = await dsResponse.json();
+        const dimJson = await dimResponse.json();
 
-        if (safeArray?.length > 0) {
-          // Map the database rows to the format our UI expects
-          const dynamicDims = safeArray.map((d: any) => ({
+        let dsArray = typeof dsJson.data === 'string' ? JSON.parse(dsJson.data) : dsJson.data;
+        let dimArray = typeof dimJson.data === 'string' ? JSON.parse(dimJson.data) : dimJson.data;
+
+        // Process Dimensions
+        if (dimArray?.length > 0) {
+          const dynamicDims = dimArray.map((d: any) => ({
             id: d.dim_id,
             label: d.dim_name
           }));
-
-          // Prepend standard fields that aren't in the mapping table
           const standardDims = [
             { id: 'period_id', label: 'Period' },
             { id: 'amount_type_id', label: 'Amount Type' }
           ];
-
           setAvailableDimensions([...standardDims, ...dynamicDims]);
         }
+
+        // Process Datasets
+        if (dsArray?.length > 0) {
+          setAvailableDatasets(dsArray);
+          setDatasetId(dsArray[0]);
+          
+          // Data exists! Release the UI lock.
+          setWorkspaceStatus('ready');
+        } else {
+          // Connected, but no data in BigQuery for this client
+          setWorkspaceStatus('empty');
+        }
+
       } catch (error) {
-        console.error('Failed to fetch dimensions dictionary:', error);
+        console.error('Failed to initialize workspace:', error);
+        setWorkspaceStatus('api_error');
       }
     };
 
-    fetchDatasets();
-    fetchDimensions();
-  }, []);
+    initWorkspace();
+  }, [token, isAuthLoading]);
+
+  const dimensionMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    availableDimensions.forEach(dim => {
+      map[dim.id] = dim.label;
+    });
+    AVAILABLE_MEASURES.forEach(m => {
+      map[m.id] = m.label;
+    });
+    return map;
+  }, [availableDimensions]);
 
   const activeDimensions = Array.from(new Set([...rowDims, ...colDims]));
 
@@ -85,7 +119,6 @@ const DashboardPage: FC = () => {
     filters: {}, 
   });
 
-  // --- HTML5 DRAG AND DROP HANDLERS ---
   const handleDragStart = (e: React.DragEvent, id: string, sourceZone: string, index: number) => {
     e.dataTransfer.setData('dimId', id);
     e.dataTransfer.setData('sourceZone', sourceZone);
@@ -132,8 +165,6 @@ const DashboardPage: FC = () => {
     if (targetZone === 'measure') setMeasures(prev => [...prev, dimId]);
   };
 
-  // Helper to resolve string IDs back to their full objects for the UI
-  // Now relies on the state variable instead of the hardcoded constant!
   const resolveDim = (id: string) => availableDimensions.find(d => d.id === id) || { id, label: id };
   const resolveMeasure = (id: string) => AVAILABLE_MEASURES.find(m => m.id === id) || { id, label: id };
 
@@ -151,11 +182,40 @@ const DashboardPage: FC = () => {
     </div>
   );
 
-  if (!datasetId) {
+  // --- SAFEGUARD UI RENDERING ---
+
+  if (workspaceStatus === 'loading' || isAuthLoading) {
     return (
-      <div className="flex items-center justify-center h-screen text-gray-500">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
-        Loading workspace...
+      <div className="flex flex-col items-center justify-center h-screen text-gray-500">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3"></div>
+        <p>Loading workspace...</p>
+      </div>
+    );
+  }
+
+  if (workspaceStatus === 'auth_error') {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-red-600">
+        <h2 className="text-xl font-bold mb-2">Authentication Required</h2>
+        <p>You must be logged in to view analytics.</p>
+      </div>
+    );
+  }
+
+  if (workspaceStatus === 'api_error') {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-red-600">
+        <h2 className="text-xl font-bold mb-2">API Connection Error</h2>
+        <p>Could not connect to the BigQuery API Layer. Check the browser console (F12).</p>
+      </div>
+    );
+  }
+
+  if (workspaceStatus === 'empty') {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-gray-600">
+        <h2 className="text-xl font-bold mb-2">No Datasets Found</h2>
+        <p>Your database is connected, but no plan versions exist for this client.</p>
       </div>
     );
   }
@@ -192,7 +252,6 @@ const DashboardPage: FC = () => {
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 shadow-sm flex flex-col h-[400px]">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Available Fields</h3>
             <div className="overflow-y-auto pr-1 flex-1">
-              {/* Loop over our newly fetched availableDimensions! */}
               {availableDimensions.map((dim, index) => (
                 <DraggableCard key={`source-dim-${dim.id}`} item={dim} zone="available" index={index} />
               ))}
@@ -253,6 +312,7 @@ const DashboardPage: FC = () => {
                 rowDimensions={rowDims}
                 colDimensions={colDims}
                 measures={measures}
+                dimensionMap={dimensionMap}
                 isLoading={isLoading}
                 error={error}
               />
