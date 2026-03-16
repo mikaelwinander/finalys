@@ -1,9 +1,11 @@
 // /frontend/src/pages/DashboardPage.tsx
 import React, { type FC, useState, useEffect, useMemo } from 'react';
 import { AdjustmentPopover } from '../components/analytics/AdjustmentPopover';
+import { SimulationHistoryPanel } from '../components/analytics/SimulationHistoryPanel';
 import { usePivotData } from '../hooks/usePivotData';
 import { PivotTable } from '../components/PivotTable/PivotTable';
 import { useAuth } from '../hooks/useAuth'; 
+import { simulationService } from '../services/simulationService';
 
 // Standard measures
 const AVAILABLE_MEASURES = [
@@ -126,6 +128,40 @@ const DashboardPage: FC = () => {
     measures,
     filters: {}, 
   });
+
+  // NEW: History State
+  const [history, setHistory] = useState<any[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+
+  // Fetch History whenever dataset changes OR when refetch is called
+  const fetchHistory = async () => {
+    if (!datasetId) return;
+    setIsHistoryLoading(true);
+    try {
+      // Use the imported service
+      const historyData = await simulationService.getHistory(datasetId); 
+      setHistory(historyData);
+    } catch (error) {
+      console.error("Failed to load history", error);
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, [datasetId, data]); // Refetch history whenever the main pivot data updates!
+
+  const handleUndo = async (timestampId: string) => {
+    if (!window.confirm("Are you sure you want to undo this simulation? This will remove the adjustments from the database.")) return;
+    
+    try {
+      await simulationService.undoAdjustment(datasetId, timestampId);
+      refetch(); // Automatically refresh the Pivot Table AND the History Panel!
+    } catch (error) {
+      alert("Failed to undo simulation.");
+    }
+  };
 
   const handleDragStart = (e: React.DragEvent, id: string, sourceZone: string, index: number) => {
     e.dataTransfer.setData('dimId', id);
@@ -348,8 +384,13 @@ const DashboardPage: FC = () => {
                 />
               </div>
             )}
-            {/* ------------------------------------ */}
-
+        {/* --- ADD THE HISTORY PANEL HERE --- */}
+        <SimulationHistoryPanel 
+          history={history} 
+          onUndo={handleUndo}
+          isLoading={isHistoryLoading}
+        />
+        {/* ---------------------------------- */}
         </div>
       </div>
     </div>

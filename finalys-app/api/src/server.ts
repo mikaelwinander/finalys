@@ -4,6 +4,8 @@ import cors from 'cors';
 import { bigqueryService, PivotQueryRequest } from './services/bigqueryService';
 import { cacheService } from './services/cacheService';
 import { logger } from './utils/logger';
+import { simulationService } from './services/simulationService';
+import { aiService } from './services/aiService';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '8080', 10);
@@ -117,6 +119,88 @@ app.get('/api/pivot-data', async (req, res) => {
   } catch (error) {
     logger.error('Route /api/pivot-data failed', { error });
     res.status(500).json({ error: 'Failed to load pivot data' });
+  }
+});
+
+// --- 3. CREATE SIMULATION ROUTE ---
+app.post('/api/simulate', async (req, res) => {
+  try {
+    const tenantId = 'FIN'; // Matching your other routes
+    const userId = 'system';
+    const { datasetId, coordinates, oldValue, userInput } = req.body;
+
+    // Translate coordinates
+    const mappings = await bigqueryService.getDimensionMapping(tenantId);
+    const translatedCoordinates: Record<string, string> = {};
+    
+    for (const [key, value] of Object.entries(coordinates as Record<string, string>)) {
+      if (key === 'period' || key === 'period_id') {
+        translatedCoordinates['period_id'] = value;
+      } else {
+        const mapping = mappings.find(m => m.dim_id === key);
+        if (mapping) {
+          const physicalCol = `dim${String(mapping.position).padStart(2, '0')}`;
+          translatedCoordinates[physicalCol] = value;
+        }
+      }
+    }
+
+    let newValue: number;
+    if (!isNaN(Number(userInput))) {
+      newValue = Number(userInput);
+    } else if (userInput.includes('%')) {
+      const percent = parseFloat(userInput) / 100;
+      newValue = oldValue * (1 + percent);
+    } else {
+      newValue = await aiService.interpretInstruction(oldValue, userInput);
+    }
+
+    await simulationService.spreadAdjustment({
+      clientId: tenantId,
+      userId,
+      datasetId,
+      coordinates: translatedCoordinates,
+      totalOldValue: oldValue,
+      totalNewValue: newValue,
+      comment: `Simulation: ${userInput}`
+    });
+
+    await cacheService.invalidateClientCache(tenantId);
+    res.status(200).json({ newValue });
+  } catch (error: any) {
+    logger.error('Route /api/simulate failed', { error });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- 4. GET AUDIT TRAIL HISTORY ---
+app.get('/api/adjustments', async (req, res) => {
+  try {
+    const tenantId = 'FIN';
+    const { datasetId } = req.query;
+    
+    const history = await simulationService.getHistory(tenantId, String(datasetId));
+    res.status(200).json(history);
+  } catch (error: any) {
+    logger.error('Route /api/adjustments failed', { error });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- 5. UNDO SIMULATION ROUTE ---
+app.delete('/api/adjustments/:timestampId', async (req, res) => {
+  try {
+    const tenantId = 'FIN';
+    const { timestampId } = req.params;
+    const { datasetId } = req.body;
+
+    await simulationService.undoAdjustment(tenantId, String(datasetId), String(timestampId));
+    await cacheService.invalidateClientCache(tenantId);
+    
+    res.status(200).json({ message: 'Simulation undone successfully' });
+  } catch (error: any) {
+    logger.error('Route DELETE /api/adjustments failed', { error });
+    res.status(500).json({ error: error.message });
   }
 });
 

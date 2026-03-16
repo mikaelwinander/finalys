@@ -7,7 +7,7 @@ import { requireTenant } from '../middleware/tenantMiddleware';
 const router = Router();
 
 // Define the route, applying authentication and tenant verification middleware first
-// Example request: GET /api/pivot-data
+// Example request: GET /api/pivot/pivot-data
 router.get(
   '/pivot-data',
   requireAuth,     // Verifies Identity Platform token
@@ -15,6 +15,27 @@ router.get(
   pivotController.getPivotData // Executes caching and query logic
 );
 
-router.post('/simulate', simulationController.processAdjustment);
+// --- SIMULATION & AUDIT TRAIL ROUTES ---
+// We MUST include requireAuth and requireTenant here too!
+router.post(
+  '/simulate', 
+  requireAuth, 
+  requireTenant, 
+  simulationController.processAdjustment
+);
+
+router.get(
+  '/adjustments', 
+  requireAuth, 
+  requireTenant, 
+  simulationController.getHistory
+);
+
+router.delete(
+  '/adjustments/:timestampId', 
+  requireAuth, 
+  requireTenant, 
+  simulationController.undoAdjustment
+);
 
 export default router;

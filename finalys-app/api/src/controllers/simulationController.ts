@@ -60,5 +60,39 @@ export const simulationController = {
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
+  },
+
+  async getHistory(req: AuthenticatedRequest, res: Response) {
+    try {
+      const clientId = req.user!.clientId;
+      const { datasetId } = req.query;
+      
+      const history = await simulationService.getHistory(clientId, String(datasetId));
+      res.status(200).json(history);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  async undoAdjustment(req: AuthenticatedRequest, res: Response) {
+    try {
+      const clientId = req.user!.clientId;
+      const { timestampId } = req.params;
+      const { datasetId } = req.body;
+
+      // FIX: Wrap datasetId and timestampId in String() to satisfy TypeScript
+      await simulationService.undoAdjustment(
+        clientId, 
+        String(datasetId), 
+        String(timestampId)
+      );
+      
+      // Clear cache so the UI updates instantly
+      await cacheService.invalidateClientCache(clientId);
+      
+      res.status(200).json({ message: 'Simulation undone successfully' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   }
 };

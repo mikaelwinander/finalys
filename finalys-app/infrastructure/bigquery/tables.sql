@@ -41,3 +41,28 @@ CREATE TABLE IF NOT EXISTS `snbx-efcpa-effectplan-vcdm.finalys_dataset.dimension
   sort_index INT64 
 )
 CLUSTER BY client_id, dim_id, dim_data_id;
+
+-- 4. Financial Adjustments (Simulation Audit Trail & Deltas)
+CREATE TABLE IF NOT EXISTS `snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_adjustments` (
+  client_id STRING NOT NULL,
+  dataset_id STRING NOT NULL,
+  user_id STRING NOT NULL,
+  period_id INT64,
+  dim01 STRING,
+  dim02 STRING,
+  dim03 STRING,
+  dim04 STRING,
+  dim05 STRING,
+  dim06 STRING,
+  dim07 STRING,
+  dim08 STRING,
+  dim09 STRING,
+  dim10 STRING,
+  dim11 STRING,
+  dim12 STRING,
+  adjustment_amount FLOAT64 NOT NULL,
+  comment STRING,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
+)
+PARTITION BY DATE(created_at)
+CLUSTER BY client_id, dataset_id;

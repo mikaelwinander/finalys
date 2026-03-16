@@ -1,4 +1,3 @@
-// Use "as string" to tell TypeScript this will be a valid string at runtime
 const API_BASE_URL = (import.meta.env?.VITE_API_URL as string) || 'https://9000-firebase-finalys-1773513026000.cluster-2a24trvdezeggvmpy7fccga2ee.cloudworkstations.dev/api';
 
 export const simulationService = {
@@ -11,12 +10,12 @@ export const simulationService = {
     oldValue: number;
     userInput: string;
   }) {
-    // We assume the user's token is handled by a global interceptor or passed here
-    const response = await fetch(`${API_BASE_URL}/pivot/simulate`, {
+    // Removed /pivot - now it correctly points to /api/simulate
+    const response = await fetch(`${API_BASE_URL}/simulate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // 'Authorization': `Bearer ${token}` // Add this when you enable Auth
+        // 'Authorization': `Bearer ${token}` // Assuming handled globally or add token if needed
       },
       body: JSON.stringify(data),
     });
@@ -26,6 +25,32 @@ export const simulationService = {
       throw new Error(errorData.error || 'Failed to process simulation');
     }
 
+    return await response.json();
+  },
+
+  /**
+   * Fetches the history of adjustments
+   */
+  async getHistory(datasetId: string) {
+    // Removed /pivot - now it correctly points to /api/adjustments
+    const response = await fetch(`${API_BASE_URL}/adjustments?datasetId=${datasetId}`);
+    
+    if (!response.ok) throw new Error('Failed to fetch history');
+    return await response.json();
+  },
+
+  /**
+   * Undoes a specific adjustment batch
+   */
+  async undoAdjustment(datasetId: string, timestampId: string) {
+    // Removed /pivot - now it correctly points to /api/adjustments/12345
+    const response = await fetch(`${API_BASE_URL}/adjustments/${encodeURIComponent(timestampId)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ datasetId })
+    });
+    
+    if (!response.ok) throw new Error('Failed to undo adjustment');
     return await response.json();
   }
 };
