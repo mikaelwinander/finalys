@@ -1,17 +1,22 @@
 // /frontend/src/types/pivot.types.ts
 
+// The request payload that the UI will build and send to the API
 export interface PivotRequestParams {
-  datasetId: string;
+  datasetIds: string[]; // <-- Updated to array for multi-dataset selection
   dimensions: string[];
   measures: string[];
-  filters?: Record<string, string>;
-  includeAdjustments?: boolean; // Add this line!
+  filters?: Record<string, any>;
+  includeAdjustments?: boolean;
 }
 
+// The shape of a single row returned from the BigQuery API
 export interface PivotRow {
-  [key: string]: any;
+  datasetId: string; // <-- BigQuery now returns this to distinguish datasets
+  amount: number;
+  [key: string]: any; // Allows for dynamic dimensions (e.g., dim01, dim02, period_id)
 }
-  
-  export interface PivotDataResponse {
-    rows: PivotRow[];
-  }
+
+// The exact response format coming from your Express route
+export interface PivotDataResponse {
+  rows: PivotRow[];
+}

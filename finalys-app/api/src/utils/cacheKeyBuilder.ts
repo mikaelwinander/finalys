@@ -12,19 +12,25 @@ const hashObject = (obj: any): string => {
 
 export const cacheKeyBuilder = {
   /**
-   * Builds the deterministic pivot cache key
-   * Format: pivot:{clientId}:{datasetId}:{dimensionHash}:{filterHash}
+   * Builds the deterministic pivot cache key for multiple datasets
+   * Format: pivot:{clientId}:{datasetIdsHash}:{dimHash}:{measureHash}:{filterHash}:adj:{includeAdj}
    */
   buildPivotKey(
-    clientId: string, // Updated from tenantId
-    datasetId: string, 
-    dimensions: any, 
-    filters: any
+    clientId: string,
+    datasetIds: string[], 
+    dimensions: string[], 
+    measures: string[],
+    filters: Record<string, any>,
+    includeAdjustments: boolean
   ): string {
+    // Sort dataset IDs to guarantee deterministic caching
+    const sortedDatasets = [...datasetIds].sort();
+    
+    const datasetHash = hashObject(sortedDatasets);
     const dimHash = hashObject(dimensions);
+    const measureHash = hashObject(measures);
     const filterHash = hashObject(filters);
     
-    // Updated format to strictly use client
-    return `pivot:${clientId}:${datasetId}:${dimHash}:${filterHash}`;
+    return `pivot:${clientId}:${datasetHash}:${dimHash}:${measureHash}:${filterHash}:adj:${includeAdjustments}`;
   }
 };

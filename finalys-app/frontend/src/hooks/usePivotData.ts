@@ -21,7 +21,8 @@ export const usePivotData = (params: PivotRequestParams): UsePivotDataResult => 
   
   const fetchData = async () => {
     // Prevent fetching if core parameters or token are missing
-    if (!params.datasetId || !params.dimensions.length || !params.measures.length || !token) {
+    // CHANGED: Checking params.datasetIds array instead of string
+    if (!params.datasetIds || !params.datasetIds.length || !params.dimensions.length || !params.measures.length || !token) {
       return;
     }
 
@@ -43,11 +44,11 @@ export const usePivotData = (params: PivotRequestParams): UsePivotDataResult => 
     if (isAuthLoading) return; // Wait for Identity Platform to initialize
     fetchData();
   }, [
-    params.datasetId,
+    JSON.stringify(params.datasetIds), // <--- CHANGED: Stringify the array to prevent infinite loops
     JSON.stringify(params.dimensions),
     JSON.stringify(params.measures),
     JSON.stringify(params.filters),
-    params.includeAdjustments, // <--- ADD THIS LINE!
+    params.includeAdjustments, 
     token,
     isAuthLoading
   ]);

@@ -6,6 +6,7 @@ import { cacheService } from './services/cacheService';
 import { logger } from './utils/logger';
 import { simulationService } from './services/simulationService';
 import { aiService } from './services/aiService';
+import { cacheKeyBuilder } from './utils/cacheKeyBuilder';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '8080', 10);
@@ -76,28 +77,32 @@ app.get('/api/dimensions', async (req, res) => {
 app.get('/api/pivot-data', async (req, res) => {
   try {
     const tenantId = 'FIN'; // Hardcoded for current testing phase
-    const datasetId = req.query.datasetId as string;
     
-    const dimensions = JSON.parse((req.query.dimensions as string) || '[]');
-    const measures = JSON.parse((req.query.measures as string) || '[]');
-    // --- FIX 1: PARSE THE FILTERS FROM THE URL ---
-    const filters = req.query.filters ? JSON.parse(req.query.filters as string) : {};
-
+    // Parse datasetIds as an array (expected format: ?datasetIds=["ds1","ds2"])
+    const datasetIds: string[] = JSON.parse((req.query.datasetIds as string) || '[]');
+    const dimensions: string[] = JSON.parse((req.query.dimensions as string) || '[]');
+    const measures: string[] = JSON.parse((req.query.measures as string) || '[]');
+    const filters: Record<string, any> = req.query.filters ? JSON.parse(req.query.filters as string) : {};
     const includeAdjustments = req.query.includeAdjustments !== 'false';
 
-    if (!datasetId || !dimensions.length || !measures.length) {
-      return res.status(400).json({ error: 'Missing required parameters' });
+    if (!datasetIds.length || !dimensions.length || !measures.length) {
+      return res.status(400).json({ error: 'Missing required parameters: datasetIds, dimensions, or measures' });
     }
 
-    // Include filters in the cache key so different filters don't share the same cache!
-    const cacheKey = `pivot:${tenantId}:${datasetId}:${dimensions.join(',')}:${measures.join(',')}:${JSON.stringify(filters)}:adj:${includeAdjustments}`;
+    // Use the centralized, deterministic cache builder
+    const cacheKey = cacheKeyBuilder.buildPivotKey(
+      tenantId, 
+      datasetIds, 
+      dimensions, 
+      measures, 
+      filters, 
+      includeAdjustments
+    );
     
     const cachedData = await cacheService.get<any[]>(cacheKey);
     if (cachedData) {
       logger.debug(`Cache HIT for key: ${cacheKey}`);
-
       const parsedData = typeof cachedData === 'string' ? JSON.parse(cachedData) : cachedData;
-
       return res.json({ rows: parsedData }); 
     }
 
@@ -106,18 +111,17 @@ app.get('/api/pivot-data', async (req, res) => {
     const requestPayload: PivotQueryRequest = {
       clientId: tenantId,
       userId: 'system',
-      datasetId: datasetId,
+      datasetIds: datasetIds, // Passed as array
       dimensions: dimensions,
       measures: measures,
       filters: filters,
-      includeAdjustments: includeAdjustments // NEW: Pass to the service
+      includeAdjustments: includeAdjustments
     };
 
     const data = await bigqueryService.getPivotAggregation(requestPayload);
     
     await cacheService.set(cacheKey, JSON.stringify(data), 3600);
     
-    // --- FIX 2: RETURN AS 'rows' ---
     res.json({ rows: data }); 
   } catch (error) {
     logger.error('Route /api/pivot-data failed', { error });

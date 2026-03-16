@@ -6,7 +6,7 @@ const API_BASE_URL = '/api';
 export const pivotService = {
   async getPivotData(params: PivotRequestParams, token: string): Promise<PivotDataResponse> {
     const queryParams = new URLSearchParams({
-      datasetId: params.datasetId,
+      datasetIds: JSON.stringify(params.datasetIds), // <-- CHANGED: Array stringified
       dimensions: JSON.stringify(params.dimensions),
       measures: JSON.stringify(params.measures),
       _t: Date.now().toString() // Cache buster forces a fresh request

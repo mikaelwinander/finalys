@@ -14,25 +14,23 @@ const ALLOWED_MEASURES = ['amount'];
 const NATIVE_DIMENSIONS = ['period_id', 'amount_type_id', 'period'];
 
 export interface PivotQueryRequest {
-  clientId: string; 
+  clientId: string;
   userId: string;
-  datasetId: string;
+  datasetIds: string[]; // <-- ARRAY OF DATASETS
   dimensions: string[];
   measures: string[];
-  filters?: Record<string, string>;
-  includeAdjustments?: boolean; // NEW: Added the toggle flag
+  filters: Record<string, any>;
+  includeAdjustments: boolean;
 }
 
 export const bigqueryService = {
   async getPivotAggregation(request: PivotQueryRequest): Promise<any[]> {
-    // NEW: Extract includeAdjustments (defaults to true)
-    const { clientId, datasetId, dimensions, measures, filters = {}, includeAdjustments = true } = request;
+    // 1. UPDATED: Extract datasetIds (array) instead of datasetId (string)
+    const { clientId, datasetIds, dimensions, measures, filters = {}, includeAdjustments = true } = request;
 
     try {
-      // 1. Fetch the dimension mapping from BigQuery (or cache) for this client
       const mappings = await this.getDimensionMapping(clientId);
 
-      // 2. Translate requested business dimensions into physical ones
       const physicalDimensions: string[] = [];
             
       for (const reqDim of dimensions) {
@@ -50,7 +48,6 @@ export const bigqueryService = {
         physicalDimensions.push(`dim${paddedPosition}`);
       }
 
-      // 3. Ensure the physical columns are valid
       const safeDimensions = physicalDimensions.filter(dim => ALLOWED_DIMENSIONS.includes(dim));
       const safeMeasures = measures.filter(measure => ALLOWED_MEASURES.includes(measure));
 
@@ -58,14 +55,16 @@ export const bigqueryService = {
         throw new Error('Invalid dimensions or measures requested');
       }
 
-      const selectColumns = safeDimensions.join(', ');
-      const groupByColumns = safeDimensions.join(', ');
+      // 2. UPDATED: We MUST select and group by dataset_id so the UI can separate the data
+      const selectColumns = `dataset_id, ${safeDimensions.join(', ')}`;
+      const groupByColumns = `dataset_id, ${safeDimensions.join(', ')}`;
       const selectMeasures = safeMeasures.map(m => `SUM(${m}) AS ${m}`).join(', ');
 
       let filterSql = '';
-      const queryParams: Record<string, any> = { clientId, datasetId };
       
-      // Translate and apply filters safely
+      // 3. UPDATED: Pass datasetIds array into query parameters
+      const queryParams: Record<string, any> = { clientId, datasetIds };
+      
       Object.entries(filters).forEach(([businessKey, value], index) => {
         if (!value) return; 
 
@@ -95,10 +94,8 @@ export const bigqueryService = {
         }
       });
 
-      // --- NEW: DYNAMIC FROM CLAUSE LOGIC ---
       let fromClause = `\`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_data_view\``;
 
-      // If toggle is ON, we merge both tables together before doing the GROUP BY
       if (includeAdjustments) {
         fromClause = `(
           SELECT client_id, dataset_id, period_id, amount_type_id,
@@ -114,8 +111,8 @@ export const bigqueryService = {
           FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_adjustments\`
         )`;
       }
-      // --------------------------------------
 
+      // 4. UPDATED: dataset_id IN UNNEST(@datasetIds)
       const query = `
         SELECT 
           ${selectColumns},
@@ -124,7 +121,7 @@ export const bigqueryService = {
           ${fromClause}
         WHERE 
           client_id = @clientId
-          AND dataset_id = @datasetId
+          AND dataset_id IN UNNEST(@datasetIds)
           ${filterSql}
         GROUP BY 
           ${groupByColumns}
@@ -133,9 +130,12 @@ export const bigqueryService = {
       const [job] = await bqClient.createQueryJob({ query, params: queryParams });
       const [rows] = await job.getQueryResults();
 
-      // 4. Translate the results BACK to business names for the React UI
+      // 5. UPDATED: Attach datasetId to the mapped results sent to React
       const translatedRows = rows.map(row => {
-        const translatedRow: any = { amount: row.amount };
+        const translatedRow: any = { 
+          datasetId: row.dataset_id, // Map dataset_id back to UI
+          amount: row.amount 
+        };
         
         dimensions.forEach((businessDim, index) => {
           const physicalCol = safeDimensions[index];
