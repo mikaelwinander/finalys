@@ -1,16 +1,16 @@
-// /frontend/src/components/PivotTable/PivotTable.tsx
 import React, { useMemo } from 'react';
 import type { PivotRow } from '../../types/pivot.types';
 
 export interface PivotTableProps {
   data: PivotRow[];
-  dimensions?: string[]; // Kept for backwards compatibility 
-  rowDimensions: string[]; // NEW
-  colDimensions: string[]; // NEW
+  dimensions?: string[]; 
+  rowDimensions: string[]; 
+  colDimensions: string[]; 
   measures: string[];
   dimensionMap?: Record<string, string>;
   isLoading: boolean;
   error: string | null;
+  onCellClick?: (value: number, coordinates: Record<string, any>) => void;
 }
 
 export const PivotTable: React.FC<PivotTableProps> = ({
@@ -18,27 +18,28 @@ export const PivotTable: React.FC<PivotTableProps> = ({
   rowDimensions,
   colDimensions,
   measures,
-  dimensionMap = {}, // <-- Make sure this is also destructured here with a default empty object
+  dimensionMap = {}, 
   isLoading,
   error,
+  onCellClick
 }) => {
 
   // --- MATRIX CALCULATION LOGIC ---
-  // Memoized so it only recalculates when the data or dimensions actually change
-  const { rowHeaders, colHeaders, dataMatrix } = useMemo(() => {
+  // NOTICE: We are now correctly destructuring coordMap here!
+  const { rowHeaders, colHeaders, dataMatrix, coordMap } = useMemo(() => {
     if (!data || data.length === 0) {
-      return { rowHeaders: [], colHeaders: [], dataMatrix: {} };
+      return { rowHeaders: [], colHeaders: [], dataMatrix: {}, coordMap: {} };
     }
 
     const rowSet = new Set<string>();
     const colSet = new Set<string>();
     const matrix: Record<string, Record<string, number>> = {};
-    
-    // Default to the first measure (usually 'amount')
+    const coords: Record<string, Record<string, any>> = {};
+
     const measureKey = measures[0] || 'amount';
 
     data.forEach(row => {
-      // 1. Generate compound keys for Rows and Columns (e.g., "Budget | 202401")
+      // 1. Generate keys
       const rKey = rowDimensions.length 
         ? rowDimensions.map(dim => row[dim] ?? '(Blank)').join(' | ') 
         : 'All Rows';
@@ -50,21 +51,30 @@ export const PivotTable: React.FC<PivotTableProps> = ({
       rowSet.add(rKey);
       colSet.add(cKey);
 
-      // 2. Map the value to the exact intersection in the matrix
+      // 2. Store original coordinate values for the Popover
+      if (!coords[rKey]) {
+        coords[rKey] = {};
+        rowDimensions.forEach(d => { coords[rKey][d] = row[d]; });
+      }
+      if (!coords[cKey]) {
+        coords[cKey] = {};
+        colDimensions.forEach(d => { coords[cKey][d] = row[d]; });
+      }
+
+      // 3. Map the value
       if (!matrix[rKey]) matrix[rKey] = {};
-      
       const val = Number(row[measureKey]) || 0;
-      matrix[rKey][cKey] = (matrix[rKey][cKey] || 0) + val; // Sum aggregation
+      matrix[rKey][cKey] = (matrix[rKey][cKey] || 0) + val; 
     });
 
     return { 
       rowHeaders: Array.from(rowSet).sort(), 
       colHeaders: Array.from(colSet).sort(), 
-      dataMatrix: matrix 
+      dataMatrix: matrix,
+      coordMap: coords 
     };
   }, [data, rowDimensions, colDimensions, measures]);
 
-  // 1. Handle Error State
   if (error) {
     return (
       <div className="p-4 border border-destructive bg-destructive/10 text-destructive rounded-md">
@@ -74,7 +84,6 @@ export const PivotTable: React.FC<PivotTableProps> = ({
     );
   }
 
-  // 2. Handle Loading State
   if (isLoading) {
     return (
       <div className="w-full h-64 flex items-center justify-center bg-surface border border-border rounded-md shadow-sm">
@@ -85,7 +94,6 @@ export const PivotTable: React.FC<PivotTableProps> = ({
     );
   }
 
-  // 3. Handle Empty State
   if (!data || data.length === 0) {
     return (
       <div className="w-full h-64 flex items-center justify-center bg-surface border border-border rounded-md shadow-sm text-surface-foreground/60">
@@ -94,7 +102,6 @@ export const PivotTable: React.FC<PivotTableProps> = ({
     );
   }
 
-  // 4. Render the Pivot Matrix
   const cornerLabel = rowDimensions.length > 0 
     ? rowDimensions.map(d => dimensionMap[d] || d).join(' / ') 
     : 'Metrics';
@@ -104,17 +111,11 @@ export const PivotTable: React.FC<PivotTableProps> = ({
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="bg-background border-b border-border">
-            {/* Top-Left Corner Cell (Row Headers) */}
             <th className="px-4 py-3 text-left font-semibold text-foreground whitespace-nowrap capitalize sticky left-0 bg-background z-10 border-r border-border">
               {cornerLabel}
             </th>
-            
-            {/* Dynamic Column Headers */}
             {colHeaders.map((colKey) => (
-              <th
-                key={colKey}
-                className="px-4 py-3 text-right font-semibold text-foreground whitespace-nowrap"
-              >
+              <th key={colKey} className="px-4 py-3 text-right font-semibold text-foreground whitespace-nowrap">
                 {colKey}
               </th>
             ))}
@@ -122,27 +123,32 @@ export const PivotTable: React.FC<PivotTableProps> = ({
         </thead>
         <tbody className="divide-y divide-border">
           {rowHeaders.map((rowKey) => (
-            <tr
-              key={rowKey}
-              className="hover:bg-background/50 transition-colors"
-            >
-              {/* Row Header Cell (Sticky on scroll) */}
+            <tr key={rowKey} className="hover:bg-background/50 transition-colors">
               <td className="px-4 py-2 whitespace-nowrap font-medium text-foreground sticky left-0 bg-surface border-r border-border shadow-[1px_0_0_0_theme('colors.border')]">
                 {rowKey}
               </td>
               
-              {/* Intersecting Data Cells */}
               {colHeaders.map((colKey) => {
-                const cellValue = dataMatrix[rowKey]?.[colKey];
+                const rawValue = dataMatrix[rowKey]?.[colKey];
+                const cellValue = rawValue ?? 0;
                 
-                const displayValue = cellValue !== undefined
-                  ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(cellValue)
+                const displayValue = rawValue !== undefined
+                  ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(rawValue)
                   : '-';
 
                 return (
                   <td
                     key={`${rowKey}-${colKey}`}
-                    className="px-4 py-2 whitespace-nowrap text-surface-foreground text-right font-mono"
+                    className="px-4 py-2 whitespace-nowrap text-surface-foreground text-right font-mono cursor-pointer hover:bg-blue-100/50 transition-all border-l border-transparent hover:border-blue-400"
+                    onClick={() => {
+                      if (onCellClick) {
+                        const combinedCoords = {
+                          ...(coordMap[rowKey] || {}),
+                          ...(coordMap[colKey] || {})
+                        };
+                        onCellClick(cellValue, combinedCoords);
+                      }
+                    }}
                   >
                     {displayValue}
                   </td>

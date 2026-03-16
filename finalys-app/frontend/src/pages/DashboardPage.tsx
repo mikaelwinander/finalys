@@ -1,5 +1,6 @@
 // /frontend/src/pages/DashboardPage.tsx
 import React, { type FC, useState, useEffect, useMemo } from 'react';
+import { AdjustmentPopover } from '../components/analytics/AdjustmentPopover';
 import { usePivotData } from '../hooks/usePivotData';
 import { PivotTable } from '../components/PivotTable/PivotTable';
 import { useAuth } from '../hooks/useAuth'; 
@@ -33,7 +34,14 @@ const DashboardPage: FC = () => {
   const [rowDims, setRowDims] = useState<string[]>([]);
   const [colDims, setColDims] = useState<string[]>([]);
   const [filterDims, setFilterDims] = useState<string[]>([]); 
-  const [measures, setMeasures] = useState<string[]>([]); 
+  const [measures, setMeasures] = useState<string[]>([]);
+
+  // NEW: State for the AI Adjustment Modal
+  const [selectedCell, setSelectedCell] = useState<{
+    value: number;
+    coordinates: Record<string, string>;
+    datasetId: string;
+  } | null>(null);
 
   useEffect(() => {
     // Wait until Firebase Identity Platform is finished initializing
@@ -315,10 +323,33 @@ const DashboardPage: FC = () => {
                 dimensionMap={dimensionMap}
                 isLoading={isLoading}
                 error={error}
+                onCellClick={(value, coordinates) => {
+                  console.log("Cell clicked!", { value, coordinates }); // Just to be safe!
+                  setSelectedCell({
+                    value,
+                    coordinates,
+                    datasetId
+                  });
+                }}
               />
             )}
           </div>
           
+            {/* --- ADD THE POPOVER RENDER BLOCK --- */}
+            {selectedCell && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+                <AdjustmentPopover 
+                  cellData={selectedCell} 
+                  onClose={() => setSelectedCell(null)}
+                  onSuccess={() => {
+                    refetch(); // This refreshes your data automatically!
+                    setSelectedCell(null);
+                  }} 
+                />
+              </div>
+            )}
+            {/* ------------------------------------ */}
+
         </div>
       </div>
     </div>

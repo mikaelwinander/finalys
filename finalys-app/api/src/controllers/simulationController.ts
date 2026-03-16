@@ -1,7 +1,8 @@
 
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/api.types';
-import { simulationService } from '../services/simulationService';
+import { simulationService } from '../services/simulationService'; // Keep this here
+import { bigqueryService } from '../services/bigqueryService';     // Add this separate import
 import { aiService } from '../services/aiService'; // Hypothetical AI wrapper
 import { cacheService } from '../services/cacheService';
 
@@ -11,6 +12,21 @@ export const simulationController = {
       const { datasetId, coordinates, oldValue, userInput } = req.body;
       const clientId = req.user!.clientId;
       const userId = req.user!.uid;
+
+      const mappings = await bigqueryService.getDimensionMapping(clientId);
+      const translatedCoordinates: Record<string, string> = {};
+
+      for (const [key, value] of Object.entries(coordinates as Record<string, string>)) {
+        if (key === 'period' || key === 'period_id') {
+          translatedCoordinates['period_id'] = value;
+        } else {
+          const mapping = mappings.find(m => m.dim_id === key);
+          if (mapping) {
+            const physicalCol = `dim${String(mapping.position).padStart(2, '0')}`;
+            translatedCoordinates[physicalCol] = value;
+          }
+        }
+      }
 
       let newValue: number;
 
@@ -31,7 +47,7 @@ export const simulationController = {
         clientId,
         userId,
         datasetId,
-        coordinates,
+        coordinates: translatedCoordinates, // Use translated version
         totalOldValue: oldValue,
         totalNewValue: newValue,
         comment: `Simulation: ${userInput}`

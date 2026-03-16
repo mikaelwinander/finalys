@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { simulationController } from '../controllers/simulationController';
 import { pivotController } from '../controllers/pivotController';
 import { requireAuth } from '../middleware/authMiddleware';
 import { requireTenant } from '../middleware/tenantMiddleware';
@@ -13,5 +14,7 @@ router.get(
   requireTenant,   // Ensures tenant isolation
   pivotController.getPivotData // Executes caching and query logic
 );
+
+router.post('/simulate', simulationController.processAdjustment);
 
 export default router;
