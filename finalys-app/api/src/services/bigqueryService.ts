@@ -20,11 +20,13 @@ export interface PivotQueryRequest {
   dimensions: string[];
   measures: string[];
   filters?: Record<string, string>;
+  includeAdjustments?: boolean; // NEW: Added the toggle flag
 }
 
 export const bigqueryService = {
   async getPivotAggregation(request: PivotQueryRequest): Promise<any[]> {
-    const { clientId, datasetId, dimensions, measures, filters = {} } = request;
+    // NEW: Extract includeAdjustments (defaults to true)
+    const { clientId, datasetId, dimensions, measures, filters = {}, includeAdjustments = true } = request;
 
     try {
       // 1. Fetch the dimension mapping from BigQuery (or cache) for this client
@@ -34,15 +36,12 @@ export const bigqueryService = {
       const physicalDimensions: string[] = [];
             
       for (const reqDim of dimensions) {
-        // Check if it's a native column first
         if (NATIVE_DIMENSIONS.includes(reqDim)) {
-          // Translate "period" to "period_id" if needed, otherwise push the native name
           const actualCol = reqDim === 'period' ? 'period_id' : reqDim;
           physicalDimensions.push(actualCol);
           continue;
         }
 
-        // Otherwise, it's a custom dimension, so map it
         const mapping = mappings.find(m => m.dim_id === reqDim);
         if (!mapping) {
           throw new Error(`Invalid dimension requested: ${reqDim}`);
@@ -68,35 +67,27 @@ export const bigqueryService = {
       
       // Translate and apply filters safely
       Object.entries(filters).forEach(([businessKey, value], index) => {
-        if (!value) return; // Skip empty filters
+        if (!value) return; 
 
         let physicalCol = '';
 
-        // 1. Handle native columns first (e.g., period, amount_type_id)
-        // If your frontend sends "period", map it to the database column "period_id"
         if (businessKey === 'period') {
            physicalCol = 'period_id';
         } else if (NATIVE_DIMENSIONS.includes(businessKey)) {
            physicalCol = businessKey;
-        } 
-        // 2. Handle custom mapped dimensions (e.g., "kto" -> "dim01")
-        else {
+        } else {
           const mapping = mappings.find(m => m.dim_id === businessKey);
-          
           if (mapping) {
             const paddedPosition = String(mapping.position).padStart(2, '0');
             physicalCol = `dim${paddedPosition}`;
           } else {
-            // logger is assumed to be imported from your utils
             logger.warn(`Unmapped filter dimension requested: ${businessKey}`);
-            return; // Skip this filter and continue to the next one
+            return; 
           }
         }
 
-        // 3. Ensure it is a valid allowed column to prevent SQL injection
         if (ALLOWED_DIMENSIONS.includes(physicalCol)) {
           const paramName = `filterVal${index}`;
-          // Use the physical column in the SQL, but bind the actual user value
           filterSql += ` AND ${physicalCol} = @${paramName}`;
           queryParams[paramName] = value; 
         } else {
@@ -104,12 +95,33 @@ export const bigqueryService = {
         }
       });
 
+      // --- NEW: DYNAMIC FROM CLAUSE LOGIC ---
+      let fromClause = `\`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_data_view\``;
+
+      // If toggle is ON, we merge both tables together before doing the GROUP BY
+      if (includeAdjustments) {
+        fromClause = `(
+          SELECT client_id, dataset_id, period_id, amount_type_id,
+                 dim01, dim02, dim03, dim04, dim05, dim06, dim07, dim08, dim09, dim10, dim11, dim12,
+                 amount
+          FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_data_view\`
+          
+          UNION ALL
+          
+          SELECT client_id, dataset_id, period_id, 'Simulated' AS amount_type_id,
+                 dim01, dim02, dim03, dim04, dim05, dim06, dim07, dim08, dim09, dim10, dim11, dim12,
+                 adjustment_amount AS amount
+          FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_adjustments\`
+        )`;
+      }
+      // --------------------------------------
+
       const query = `
         SELECT 
           ${selectColumns},
           ${selectMeasures}
         FROM 
-          \`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_data_view\`
+          ${fromClause}
         WHERE 
           client_id = @clientId
           AND dataset_id = @datasetId
@@ -125,7 +137,6 @@ export const bigqueryService = {
       const translatedRows = rows.map(row => {
         const translatedRow: any = { amount: row.amount };
         
-        // Map dim01 back to "kto", dim02 back to "vsh", etc.
         dimensions.forEach((businessDim, index) => {
           const physicalCol = safeDimensions[index];
           translatedRow[businessDim] = row[physicalCol];

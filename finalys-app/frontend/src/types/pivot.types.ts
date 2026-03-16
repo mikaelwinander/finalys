@@ -5,6 +5,7 @@ export interface PivotRequestParams {
   dimensions: string[];
   measures: string[];
   filters?: Record<string, string>;
+  includeAdjustments?: boolean; // Add this line!
 }
 
 export interface PivotRow {

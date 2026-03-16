@@ -83,12 +83,14 @@ app.get('/api/pivot-data', async (req, res) => {
     // --- FIX 1: PARSE THE FILTERS FROM THE URL ---
     const filters = req.query.filters ? JSON.parse(req.query.filters as string) : {};
 
+    const includeAdjustments = req.query.includeAdjustments !== 'false';
+
     if (!datasetId || !dimensions.length || !measures.length) {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
 
     // Include filters in the cache key so different filters don't share the same cache!
-    const cacheKey = `pivot:${tenantId}:${datasetId}:${dimensions.join(',')}:${measures.join(',')}:${JSON.stringify(filters)}`;
+    const cacheKey = `pivot:${tenantId}:${datasetId}:${dimensions.join(',')}:${measures.join(',')}:${JSON.stringify(filters)}:adj:${includeAdjustments}`;
     
     const cachedData = await cacheService.get<any[]>(cacheKey);
     if (cachedData) {
@@ -107,7 +109,8 @@ app.get('/api/pivot-data', async (req, res) => {
       datasetId: datasetId,
       dimensions: dimensions,
       measures: measures,
-      filters: filters
+      filters: filters,
+      includeAdjustments: includeAdjustments // NEW: Pass to the service
     };
 
     const data = await bigqueryService.getPivotAggregation(requestPayload);

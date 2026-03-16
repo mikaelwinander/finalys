@@ -38,6 +38,8 @@ const DashboardPage: FC = () => {
   const [filterDims, setFilterDims] = useState<string[]>([]); 
   const [measures, setMeasures] = useState<string[]>([]);
 
+  const [includeAdjustments, setIncludeAdjustments] = useState(true);
+
   // NEW: State for the AI Adjustment Modal
   const [selectedCell, setSelectedCell] = useState<{
     value: number;
@@ -127,6 +129,7 @@ const DashboardPage: FC = () => {
     dimensions: activeDimensions,
     measures,
     filters: {}, 
+    includeAdjustments // <-- Pass it here
   });
 
   // NEW: History State
@@ -342,6 +345,25 @@ const DashboardPage: FC = () => {
               {measures.length === 0 && <p className="text-xs text-amber-500 italic text-center py-2">Drop values</p>}
             </div>
 
+          </div>
+
+          {/* The Toggle Switch */}
+          <div className="flex justify-end items-center mb-2 px-2">
+            <label className="flex items-center cursor-pointer gap-2">
+              <span className="text-sm font-medium text-gray-600">
+                Include adjustments {/* <-- Text renamed here! */}
+              </span>
+              <div className="relative">
+                <input 
+                  type="checkbox" 
+                  className="sr-only" 
+                  checked={includeAdjustments}
+                  onChange={(e) => setIncludeAdjustments(e.target.checked)}
+                />
+                <div className={`block w-10 h-6 rounded-full transition-colors ${includeAdjustments ? 'bg-purple-500' : 'bg-gray-300'}`}></div>
+                <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${includeAdjustments ? 'transform translate-x-4' : ''}`}></div>
+              </div>
+            </label>
           </div>
 
           <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm overflow-x-auto min-h-[400px]">

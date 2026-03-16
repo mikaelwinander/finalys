@@ -18,7 +18,7 @@ export const usePivotData = (params: PivotRequestParams): UsePivotDataResult => 
   
   // Extract token from your React Context
   const { token, isLoading: isAuthLoading } = useAuth(); 
-
+  
   const fetchData = async () => {
     // Prevent fetching if core parameters or token are missing
     if (!params.datasetId || !params.dimensions.length || !params.measures.length || !token) {
@@ -47,6 +47,7 @@ export const usePivotData = (params: PivotRequestParams): UsePivotDataResult => 
     JSON.stringify(params.dimensions),
     JSON.stringify(params.measures),
     JSON.stringify(params.filters),
+    params.includeAdjustments, // <--- ADD THIS LINE!
     token,
     isAuthLoading
   ]);

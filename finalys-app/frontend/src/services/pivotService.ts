@@ -9,8 +9,14 @@ export const pivotService = {
       datasetId: params.datasetId,
       dimensions: JSON.stringify(params.dimensions),
       measures: JSON.stringify(params.measures),
-      _t: Date.now().toString() // <-- NEW: Cache buster forces a fresh request
+      _t: Date.now().toString() // Cache buster forces a fresh request
     });
+
+    // --- NEW: Add the AI Adjustments Toggle Flag ---
+    // If includeAdjustments is explicitly false, send 'false'. Otherwise default to 'true'.
+    const shouldInclude = params.includeAdjustments !== false;
+    queryParams.append('includeAdjustments', String(shouldInclude));
+    // -----------------------------------------------
 
     // Only append filters if it actually has keys (prevents sending %7B%7D)
     if (params.filters && Object.keys(params.filters).length > 0) {
@@ -60,4 +66,3 @@ export const pivotService = {
     return dictionary;
   }
 };
-
