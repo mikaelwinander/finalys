@@ -2,6 +2,7 @@
 import 'dotenv/config';
 import * as sql from 'mssql';
 import { BigQuery } from '@google-cloud/bigquery';
+import { cacheService } from '../../api/src/services/cacheService';
 
 const sqlConfig: sql.config = {
   user: process.env.AZURE_SQL_USER || 'your_db_user',
@@ -138,6 +139,11 @@ export const runAzureToBigQuerySync = async () => {
     }
 
     console.log('[ETL] Pipeline completed successfully!');
+
+    // NEW: Clear the cache so the frontend fetches the fresh BigQuery data
+    console.log(`[ETL] Triggering cache invalidation for ${TARGET_CLIENT_ID}...`);
+    await cacheService.invalidateClientCache(TARGET_CLIENT_ID);
+
   } catch (error: any) {
     console.error('[ETL] Pipeline failed:', error.message);
     

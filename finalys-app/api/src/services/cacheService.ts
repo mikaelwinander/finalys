@@ -37,6 +37,22 @@ export const cacheService = {
   /**
    * Invalidates specific cache keys, useful when underlying dataset changes.
    */
+  async invalidateClientCache(clientId: string): Promise<void> {
+    try {
+      // Find all keys starting with 'pivot:clientId:*'
+      // Note: In production, consider using 'SCAN' instead of 'KEYS' for large datasets
+      const pattern = `pivot:${clientId}:*`;
+      const keys = await redisClient.keys(pattern);
+
+      if (keys.length > 0) {
+        await redisClient.del(...keys);
+        logger.info(`Invalidated ${keys.length} cache keys for Client: ${clientId}`);
+      }
+    } catch (error) {
+      logger.error('Redis Invalidation error', { clientId, error });
+    }
+  },
+
   async delete(key: string): Promise<void> {
     try {
       await redisClient.del(key);

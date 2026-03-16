@@ -11,6 +11,8 @@ const ALLOWED_DIMENSIONS = [
 ];
 const ALLOWED_MEASURES = ['amount'];
 
+const NATIVE_DIMENSIONS = ['period_id', 'amount_type_id', 'period'];
+
 export interface PivotQueryRequest {
   clientId: string; 
   userId: string;
@@ -28,15 +30,23 @@ export const bigqueryService = {
       // 1. Fetch the dimension mapping from BigQuery (or cache) for this client
       const mappings = await this.getDimensionMapping(clientId);
 
-      // 2. Translate requested business dimensions (e.g., "kto") into physical ones (e.g., "dim01")
+      // 2. Translate requested business dimensions into physical ones
       const physicalDimensions: string[] = [];
-      
+            
       for (const reqDim of dimensions) {
+        // Check if it's a native column first
+        if (NATIVE_DIMENSIONS.includes(reqDim)) {
+          // Translate "period" to "period_id" if needed, otherwise push the native name
+          const actualCol = reqDim === 'period' ? 'period_id' : reqDim;
+          physicalDimensions.push(actualCol);
+          continue;
+        }
+
+        // Otherwise, it's a custom dimension, so map it
         const mapping = mappings.find(m => m.dim_id === reqDim);
         if (!mapping) {
           throw new Error(`Invalid dimension requested: ${reqDim}`);
         }
-        // Assuming position 1 maps to dim01, position 2 to dim02, etc.
         const paddedPosition = String(mapping.position).padStart(2, '0');
         physicalDimensions.push(`dim${paddedPosition}`);
       }
@@ -55,30 +65,42 @@ export const bigqueryService = {
 
       let filterSql = '';
       const queryParams: Record<string, any> = { clientId, datasetId };
-
+      
       // Translate and apply filters safely
       Object.entries(filters).forEach(([businessKey, value], index) => {
         if (!value) return; // Skip empty filters
 
-        // 1. Find the mapping for the frontend filter key (e.g., "kto")
-        const mapping = mappings.find(m => m.dim_id === businessKey);
-        
-        if (mapping) {
-          // 2. Translate to physical column (e.g., "dim01")
-          const paddedPosition = String(mapping.position).padStart(2, '0');
-          const physicalCol = `dim${paddedPosition}`;
+        let physicalCol = '';
 
-          // 3. Ensure it is a valid allowed column to prevent SQL injection
-          if (ALLOWED_DIMENSIONS.includes(physicalCol)) {
-            const paramName = `filterVal${index}`;
-            // Use the physical column in the SQL, but bind the actual user value
-            filterSql += ` AND ${physicalCol} = @${paramName}`;
-            queryParams[paramName] = value; 
+        // 1. Handle native columns first (e.g., period, amount_type_id)
+        // If your frontend sends "period", map it to the database column "period_id"
+        if (businessKey === 'period') {
+           physicalCol = 'period_id';
+        } else if (NATIVE_DIMENSIONS.includes(businessKey)) {
+           physicalCol = businessKey;
+        } 
+        // 2. Handle custom mapped dimensions (e.g., "kto" -> "dim01")
+        else {
+          const mapping = mappings.find(m => m.dim_id === businessKey);
+          
+          if (mapping) {
+            const paddedPosition = String(mapping.position).padStart(2, '0');
+            physicalCol = `dim${paddedPosition}`;
           } else {
-            logger.warn(`Attempted to filter on unsafe physical column: ${physicalCol}`);
+            // logger is assumed to be imported from your utils
+            logger.warn(`Unmapped filter dimension requested: ${businessKey}`);
+            return; // Skip this filter and continue to the next one
           }
+        }
+
+        // 3. Ensure it is a valid allowed column to prevent SQL injection
+        if (ALLOWED_DIMENSIONS.includes(physicalCol)) {
+          const paramName = `filterVal${index}`;
+          // Use the physical column in the SQL, but bind the actual user value
+          filterSql += ` AND ${physicalCol} = @${paramName}`;
+          queryParams[paramName] = value; 
         } else {
-          logger.warn(`Unmapped filter dimension requested: ${businessKey}`);
+          logger.warn(`Attempted to filter on unsafe physical column: ${physicalCol}`);
         }
       });
 
