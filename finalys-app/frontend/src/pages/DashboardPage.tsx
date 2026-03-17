@@ -11,6 +11,7 @@ import { DraggableCard } from '../components/PivotTable/DraggableCard';
 import { useAuth } from '../hooks/useAuth'; 
 import { simulationService } from '../services/simulationService';
 import { PivotSettingsModal } from '../components/PivotTable/PivotSettingsModal';
+import { ConfigurationDrawer } from '../components/PivotTable/ConfigurationDrawer';
 
 const AVAILABLE_MEASURES = [{ id: 'amount', label: 'Amount (Sum)' }];
 const FALLBACK_DIMENSIONS = [
@@ -34,6 +35,8 @@ const DashboardPage: FC = () => {
   const [datasetLayout, setDatasetLayout] = useState<'col' | 'row'>('col');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSettingsMeasure, setActiveSettingsMeasure] = useState<string | null>(null);
+
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const [selectedCell, setSelectedCell] = useState<{ value: number; coordinates: Record<string, string>; datasetId: string; } | null>(null);
   const [isAdminPopoverOpen, setIsAdminPopoverOpen] = useState(false);
@@ -139,9 +142,9 @@ const DashboardPage: FC = () => {
             <p className="text-sm text-gray-500 mt-1">Comparing {datasetIds.length} dataset(s)</p>
           </div>
           <div className="flex items-center gap-4">
-            {/* NEW: Global Adjustments Toggle */}
+            {/* 1. Global Adjustments Toggle */}
             <div className="flex items-center gap-2 pr-4 border-r border-gray-300">
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
                 Include Adjustments
               </span>
               <button
@@ -159,12 +162,23 @@ const DashboardPage: FC = () => {
               </button>
             </div>
 
+            {/* 2. User Analysis Tools */}
+            <button 
+              onClick={() => setIsDrawerOpen(true)} 
+              className="px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-100 transition-colors flex items-center gap-2"
+            >
+              <span>📊</span> Customize Layout
+            </button>
+
+            {/* 3. Admin Setup Tools */}
             <button 
               onClick={() => setIsAdminPopoverOpen(true)} 
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 shadow-sm transition-colors"
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 shadow-sm transition-colors flex items-center gap-2"
             >
-              ⚙️ Design View (Admin)
+              <span>⚙️</span> Admin Workspace
             </button>
+            
+            {/* 4. Refresh Button */}
             <button 
               onClick={refetch} 
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 shadow-sm transition-colors"
@@ -175,35 +189,11 @@ const DashboardPage: FC = () => {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6">
-        <div className="w-full lg:w-64 flex-shrink-0 space-y-4" onDragOver={dragDropState.handleDragOver} onDrop={(e) => dragDropState.handleDrop(e, 'available')}>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 shadow-sm flex flex-col h-[400px]">
-            <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Available Fields</h3>
-            <div className="overflow-y-auto pr-1 flex-1">
-              {availableDimensions.map((dim, i) => (
-                <DraggableCard key={dim.id} item={dim} zone="available" index={i} onDragStart={dragDropState.handleDragStart} onDragEnd={dragDropState.handleDragEnd} />
-              ))}
-            </div>
-          </div>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 shadow-sm min-h-[100px]">
-            <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Measures</h3>
-            <div className="pr-1">
-              {AVAILABLE_MEASURES.map((measure, i) => (
-                <DraggableCard key={measure.id} item={measure} zone="available" index={i} onDragStart={dragDropState.handleDragStart} onDragEnd={dragDropState.handleDragEnd} />
-              ))}
-            </div>
-          </div>
-        </div>
-
+      <div className="flex flex-col gap-6">
+        {/* Full-width Matrix Area */}
         <div className="flex-1 flex flex-col min-w-0 space-y-4">
-          <PivotDropZones 
-            {...dragDropState}
-            resolveDim={resolveDim}
-            resolveMeasure={resolveMeasure}
-            onMeasureSettingsClick={(id) => { setActiveSettingsMeasure(id); setIsSettingsModalOpen(true); }}
-          />
-
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm overflow-x-auto min-h-[400px]">
+          
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm overflow-x-auto min-h-[500px]">
             <PivotTable 
               data={data}
               rowDimensions={dragDropState.rowDims}
@@ -212,14 +202,14 @@ const DashboardPage: FC = () => {
               dimensionMap={dimensionMap}
               isLoading={isLoading}
               error={error}
-              showVariance={showVariance} 
+              showVariance={showVariance}  
               datasetIds={datasetIds}    
               datasetDirection={datasetLayout}
               onCellClick={(value, coordinates) => setSelectedCell({ value, coordinates, datasetId: coordinates.datasetId || datasetIds[0] })}
             />
           </div>
 
-          {/* RESTORED: Simulation History Panel */}
+          {/* Simulation History Panel stays at the bottom */}
           <SimulationHistoryPanel history={history} onUndo={handleUndo} isLoading={isHistoryLoading} />
         </div>
       </div>
@@ -261,6 +251,16 @@ const DashboardPage: FC = () => {
           alert(`Template "${templateParams.name}" saved! Check the browser console.`);
           setIsAdminPopoverOpen(false);
         }}
+      />
+      <ConfigurationDrawer 
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        dragDropState={dragDropState}
+        availableDimensions={availableDimensions}
+        availableMeasures={AVAILABLE_MEASURES}
+        resolveDim={resolveDim}
+        resolveMeasure={resolveMeasure}
+        onMeasureSettingsClick={(id) => { setActiveSettingsMeasure(id); setIsSettingsModalOpen(true); }}
       />
     </div>
   );
