@@ -28,7 +28,14 @@ const DashboardPage: FC = () => {
   const [availableDimensions, setAvailableDimensions] = useState<{id: string, label: string}[]>(FALLBACK_DIMENSIONS);
   const [workspaceStatus, setWorkspaceStatus] = useState<'loading' | 'ready' | 'empty' | 'auth_error' | 'api_error'>('loading');
 
-  const dragDropState = usePivotDragDrop(AVAILABLE_MEASURES);
+  const dragDropState = usePivotDragDrop(AVAILABLE_MEASURES); // This is now your DRAFT state
+
+  // NEW: This is your LIVE state. The table only updates when this changes!
+  const [activeLayout, setActiveLayout] = useState({
+    rowDims: [] as string[],
+    colDims: [] as string[],
+    measures: ['amount'] as string[]
+  });
 
   const [includeAdjustments, setIncludeAdjustments] = useState(true);
   const [showVariance, setShowVariance] = useState(false);
@@ -80,14 +87,20 @@ const DashboardPage: FC = () => {
   // Handle applying the selected template manually from the dropdown
   const handleApplyTemplate = (templateId: string) => {
     setSelectedTemplateId(templateId);
-    if (!templateId) {
-      // If user selects "-- Custom --", optionally clear the board or leave as is
-      return; 
-    }
+    if (!templateId) return;
 
     const template = templates.find(t => t.id === templateId);
     if (template && dragDropState.applyLayout) {
+      
+      // 1. Update the Draft State (for the Drawer)
       dragDropState.applyLayout(template.rowDimensions, template.colDimensions, template.measures);
+      
+      // 2. Update the Live State (for the Matrix)
+      setActiveLayout({
+        rowDims: template.rowDimensions || [],
+        colDims: template.colDimensions || [],
+        measures: template.measures || ['amount']
+      });
     }
   };
 
@@ -138,12 +151,12 @@ const DashboardPage: FC = () => {
     return map;
   }, [availableDimensions]);
 
-  const activeDimensions = Array.from(new Set([...dragDropState.rowDims, ...dragDropState.colDims]));
+  const activeDimensions = Array.from(new Set([...activeLayout.rowDims, ...activeLayout.colDims]));
 
   const { data, isLoading, error, refetch } = usePivotData({
     datasetIds,
     dimensions: activeDimensions,
-    measures: dragDropState.measures,
+    measures: activeLayout.measures,
     filters: {}, 
     includeAdjustments 
   });
@@ -233,8 +246,13 @@ const DashboardPage: FC = () => {
             </div>
 
             {/* 3. User Analysis Tools */}
+            {/* 3. User Analysis Tools */}
             <button 
-              onClick={() => setIsDrawerOpen(true)} 
+              onClick={() => {
+                // FORCE SYNC: Make the drawer exactly match the live matrix before opening
+                dragDropState.applyLayout(activeLayout.rowDims, activeLayout.colDims, activeLayout.measures);
+                setIsDrawerOpen(true);
+              }} 
               className="px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-100 transition-colors flex items-center gap-2 shadow-sm"
             >
               <span>📊</span> Customize Layout
@@ -263,20 +281,24 @@ const DashboardPage: FC = () => {
         {/* Full-width Matrix Area */}
         <div className="flex-1 flex flex-col min-w-0 space-y-4">
           
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm overflow-x-auto min-h-[500px]">
-            <PivotTable 
-              data={data}
-              rowDimensions={dragDropState.rowDims}
-              colDimensions={dragDropState.colDims}
-              measures={dragDropState.measures}
-              dimensionMap={dimensionMap}
-              isLoading={isLoading}
-              error={error}
-              showVariance={showVariance}  
-              datasetIds={datasetIds}    
-              datasetDirection={datasetLayout}
-              onCellClick={(value, coordinates) => setSelectedCell({ value, coordinates, datasetId: coordinates.datasetId || datasetIds[0] })}
-            />
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm overflow-x-auto min-h-[500px] relative">
+            {/* ... your loading spinner ... */}
+            <div className={`transition-opacity duration-200 ${isLoading ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
+              <PivotTable 
+                data={data}
+                // THESE MUST POINT TO activeLayout, NOT dragDropState!
+                rowDimensions={activeLayout.rowDims}
+                colDimensions={activeLayout.colDims}
+                measures={activeLayout.measures}
+                dimensionMap={dimensionMap}
+                isLoading={false} 
+                error={error}
+                showVariance={showVariance}  
+                datasetIds={datasetIds}    
+                datasetDirection={datasetLayout}
+                onCellClick={(value, coordinates) => setSelectedCell({ value, coordinates, datasetId: coordinates.datasetId || datasetIds[0] })}
+              />
+            </div>
           </div>
 
           {/* Simulation History Panel stays at the bottom */}
@@ -353,6 +375,20 @@ const DashboardPage: FC = () => {
       <ConfigurationDrawer 
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
+        onCancel={() => {
+          // If they cancel, revert the drawer's draft state back to whatever the live matrix currently looks like!
+          dragDropState.applyLayout(activeLayout.rowDims, activeLayout.colDims, activeLayout.measures);
+          setIsDrawerOpen(false);
+        }}
+        onApply={() => {
+          // If they apply, push the drawer's draft state into the live matrix!
+          setActiveLayout({
+            rowDims: dragDropState.rowDims,
+            colDims: dragDropState.colDims,
+            measures: dragDropState.measures
+          });
+          setIsDrawerOpen(false);
+        }}
         dragDropState={dragDropState}
         availableDimensions={availableDimensions}
         availableMeasures={AVAILABLE_MEASURES}

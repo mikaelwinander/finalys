@@ -11,7 +11,8 @@ export const usePivotDragDrop = (availableMeasures: { id: string, label: string 
   const [rowDims, setRowDims] = useState<string[]>([]);
   const [colDims, setColDims] = useState<string[]>([]);
   const [filterDims, setFilterDims] = useState<string[]>([]);
-  const [measures, setMeasures] = useState<string[]>([]);
+  //const [measures, setMeasures] = useState<string[]>([]);
+  const [measures, setMeasures] = useState<string[]>(['amount']);
 
   const handleDragStart = useCallback((e: React.DragEvent, id: string, sourceZone: string, index: number) => {
     e.dataTransfer.setData('dimId', id);
