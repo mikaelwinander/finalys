@@ -43,7 +43,7 @@ export interface PhysicalQueryRequest {
       let fromClause = `\`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_data_view\``;
   
       if (request.includeAdjustments) {
-        // Security Boundary: Enforces user_id or shared_flag for private simulations
+        // Cleaned up: Removed the CAST since amount_type_id is already a string!
         fromClause = `(
           SELECT client_id, dataset_id, period_id, amount_type_id,
                  dim01, dim02, dim03, dim04, dim05, dim06, dim07, dim08, dim09, dim10, dim11, dim12,
@@ -59,7 +59,7 @@ export interface PhysicalQueryRequest {
           FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_adjustments\`
           WHERE client_id = @clientId
             AND (user_id = @userId OR shared_flag = true) 
-        )`;
+        ) AS combined_data`;
       }
   
       // 6. Final Query Assembly

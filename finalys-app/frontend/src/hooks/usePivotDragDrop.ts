@@ -65,6 +65,14 @@ export const usePivotDragDrop = (availableMeasures: { id: string, label: string 
     if (targetZone === 'measure') setMeasures(prev => [...prev, dimId]);
   }, [rowDims, colDims, filterDims, measures, availableMeasures]);
 
+  // NEW: Instantly apply a saved template layout
+  const applyLayout = useCallback((newRows: string[], newCols: string[], newMeasures: string[]) => {
+    setRowDims(newRows || []);
+    setColDims(newCols || []);
+    setMeasures(newMeasures || []);
+    // If you add filter arrays to templates later, you can set them here too!
+  }, []);
+
   return {
     rowDims,
     colDims,
@@ -77,6 +85,7 @@ export const usePivotDragDrop = (availableMeasures: { id: string, label: string 
     handleDragStart,
     handleDragEnd,
     handleDragOver,
-    handleDrop
+    handleDrop,
+    applyLayout // <-- Exported here!
   };
 };

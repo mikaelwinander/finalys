@@ -67,3 +67,22 @@ CREATE TABLE IF NOT EXISTS `snbx-efcpa-effectplan-vcdm.finalys_dataset.financial
 )
 PARTITION BY DATE(created_at)
 CLUSTER BY client_id, dataset_id, user_id; -- <--- UPDATED: Added user_id for optimal partition pruning
+
+CREATE TABLE IF NOT EXISTS `snbx-efcpa-effectplan-vcdm.finalys_dataset.report_templates`
+(
+  client_id STRING NOT NULL,
+  template_id STRING NOT NULL,
+  template_name STRING NOT NULL,
+  description STRING,
+  created_by STRING NOT NULL,
+  is_default BOOL DEFAULT FALSE,
+  
+  -- We store the layout arrays as JSON strings so they are highly flexible
+  row_dimensions JSON NOT NULL,
+  col_dimensions JSON NOT NULL,
+  measures JSON NOT NULL,
+  filters JSON,
+  
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
+)
+CLUSTER BY client_id;

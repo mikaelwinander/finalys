@@ -3,6 +3,7 @@ import { simulationController } from '../controllers/simulationController';
 import { pivotController } from '../controllers/pivotController';
 import { requireAuth } from '../middleware/authMiddleware';
 import { requireTenant } from '../middleware/tenantMiddleware';
+import { templateController } from '../controllers/templateController';
 
 const router = Router();
 
@@ -37,5 +38,8 @@ router.delete(
   requireTenant, 
   simulationController.undoAdjustment
 );
+
+router.post('/templates', requireAuth, requireTenant, templateController.saveTemplate);
+router.get('/templates', requireAuth, requireTenant, templateController.getTemplates);
 
 export default router;

@@ -6,8 +6,8 @@ import { SimulationHistoryPanel } from '../components/analytics/SimulationHistor
 import { usePivotData } from '../hooks/usePivotData';
 import { usePivotDragDrop } from '../hooks/usePivotDragDrop';
 import { PivotTable } from '../components/PivotTable/PivotTable';
-import { PivotDropZones } from '../components/PivotTable/PivotDropZones';
-import { DraggableCard } from '../components/PivotTable/DraggableCard';
+//import { PivotDropZones } from '../components/PivotTable/PivotDropZones';
+//import { DraggableCard } from '../components/PivotTable/DraggableCard';
 import { useAuth } from '../hooks/useAuth'; 
 import { simulationService } from '../services/simulationService';
 import { PivotSettingsModal } from '../components/PivotTable/PivotSettingsModal';
@@ -37,6 +37,59 @@ const DashboardPage: FC = () => {
   const [activeSettingsMeasure, setActiveSettingsMeasure] = useState<string | null>(null);
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  // NEW: Template State
+  // NEW: Template State
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+
+  // UPDATED: Fetch Templates Function (now accepts an isInitialLoad flag)
+  const fetchTemplates = useCallback(async (isInitialLoad = false) => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/templates', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const fetchedTemplates = json.data || [];
+        setTemplates(fetchedTemplates);
+
+        // AUTO-LOAD LOGIC: Only apply automatically on the very first load
+        if (isInitialLoad) {
+          const defaultTemplate = fetchedTemplates.find((t: any) => t.isDefault);
+          if (defaultTemplate && dragDropState.applyLayout) {
+            setSelectedTemplateId(defaultTemplate.id);
+            dragDropState.applyLayout(
+              defaultTemplate.rowDimensions, 
+              defaultTemplate.colDimensions, 
+              defaultTemplate.measures
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load templates", error);
+    }
+  }, [token, dragDropState]); // Added dragDropState to dependencies
+
+  // UPDATED: Pass 'true' so the auto-load only happens when the dashboard first opens
+  useEffect(() => {
+    fetchTemplates(true);
+  }, [fetchTemplates]);
+
+  // Handle applying the selected template manually from the dropdown
+  const handleApplyTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    if (!templateId) {
+      // If user selects "-- Custom --", optionally clear the board or leave as is
+      return; 
+    }
+
+    const template = templates.find(t => t.id === templateId);
+    if (template && dragDropState.applyLayout) {
+      dragDropState.applyLayout(template.rowDimensions, template.colDimensions, template.measures);
+    }
+  };
 
   const [selectedCell, setSelectedCell] = useState<{ value: number; coordinates: Record<string, string>; datasetId: string; } | null>(null);
   const [isAdminPopoverOpen, setIsAdminPopoverOpen] = useState(false);
@@ -135,14 +188,31 @@ const DashboardPage: FC = () => {
   return (
     <div className="max-w-screen-2xl mx-auto space-y-6 p-4">
 
-      <div className="flex flex-col gap-4 border-b border-gray-200 pb-4">
+<div className="flex flex-col gap-4 border-b border-gray-200 pb-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Financial Overview</h1>
             <p className="text-sm text-gray-500 mt-1">Comparing {datasetIds.length} dataset(s)</p>
           </div>
+          
           <div className="flex items-center gap-4">
-            {/* 1. Global Adjustments Toggle */}
+            
+            {/* 1. Load Template Dropdown */}
+            <div className="flex items-center gap-2 pr-4 border-r border-gray-300">
+              <span className="text-sm font-medium text-gray-700 whitespace-nowrap">View:</span>
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => handleApplyTemplate(e.target.value)}
+                className="text-sm border border-gray-300 rounded-md py-1.5 pl-2 pr-8 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
+              >
+                <option value="">-- Custom --</option>
+                {templates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2. Global Adjustments Toggle */}
             <div className="flex items-center gap-2 pr-4 border-r border-gray-300">
               <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
                 Include Adjustments
@@ -162,15 +232,15 @@ const DashboardPage: FC = () => {
               </button>
             </div>
 
-            {/* 2. User Analysis Tools */}
+            {/* 3. User Analysis Tools */}
             <button 
               onClick={() => setIsDrawerOpen(true)} 
-              className="px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-100 transition-colors flex items-center gap-2"
+              className="px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-100 transition-colors flex items-center gap-2 shadow-sm"
             >
               <span>📊</span> Customize Layout
             </button>
 
-            {/* 3. Admin Setup Tools */}
+            {/* 4. Admin Setup Tools */}
             <button 
               onClick={() => setIsAdminPopoverOpen(true)} 
               className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 shadow-sm transition-colors flex items-center gap-2"
@@ -178,7 +248,7 @@ const DashboardPage: FC = () => {
               <span>⚙️</span> Admin Workspace
             </button>
             
-            {/* 4. Refresh Button */}
+            {/* 5. Refresh Button */}
             <button 
               onClick={refetch} 
               className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 shadow-sm transition-colors"
@@ -245,11 +315,39 @@ const DashboardPage: FC = () => {
       <AdminTemplatePopover 
         isOpen={isAdminPopoverOpen}
         onClose={() => setIsAdminPopoverOpen(false)}
-        availableDimensions={availableDimensions}
         onSaveTemplate={async (templateParams) => {
-          console.log("Saving new template boundaries:", templateParams);
-          alert(`Template "${templateParams.name}" saved! Check the browser console.`);
-          setIsAdminPopoverOpen(false);
+          try {
+            // 1. Package the current Drag & Drop state into the payload
+            const payload = {
+              templateName: templateParams.name,
+              description: templateParams.description,
+              isDefault: templateParams.isDefault,
+              rowDimensions: dragDropState.rowDims,
+              colDimensions: dragDropState.colDims,
+              measures: dragDropState.measures,
+              filters: {} // You can hook up your active filters here later!
+            };
+
+            // 2. Send it to your new Node backend endpoint
+            const res = await fetch('/api/templates', {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+              },
+              body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) throw new Error('Failed to save template');
+            
+            alert(`Template "${templateParams.name}" saved successfully!`);
+            fetchTemplates(); // Force the dropdown to grab the new template!
+            setIsAdminPopoverOpen(false);
+            
+          } catch (error) {
+            console.error("Error saving template:", error);
+            alert("Failed to save template. Check the console.");
+          }
         }}
       />
       <ConfigurationDrawer 
