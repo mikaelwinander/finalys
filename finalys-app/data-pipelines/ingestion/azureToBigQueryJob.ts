@@ -3,6 +3,8 @@ import 'dotenv/config';
 import * as sql from 'mssql';
 import { BigQuery } from '@google-cloud/bigquery';
 import { cacheService } from '../../api/src/services/cacheService';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const sqlConfig: sql.config = {
   user: process.env.AZURE_SQL_USER || 'your_db_user',
@@ -22,32 +24,11 @@ const BQ_TABLE_DATA = 'dimension_data';
 
 const TARGET_CLIENT_ID = process.env.TARGET_CLIENT_ID || 'FIN';
 
-// --- Interfaces updated to client_id ---
-interface BqFinancialRow {
-  client_id: string;
-  dataset_id: string;
-  period_id: number;
-  amount_type_id: string;
-  dim01: string | null;
-  dim02: string | null;
-  dim03: string | null;
-  dim04: string | null;
-  dim05: string | null;
-  dim06: string | null;
-  dim07: string | null;
-  dim08: string | null;
-  dim09: string | null;
-  dim10: string | null;
-  dim11: string | null;
-  dim12: string | null;
-  amount: number;
-}
-
 interface BqDimMappingRow {
   client_id: string;
   dim_id: string;
   dim_name: string;
-  sort_index: number | null;
+  position: number; // <--- FIXED: Match BQ schema and SQL query
 }
 
 interface BqDimDataRow {
@@ -61,15 +42,25 @@ interface BqDimDataRow {
 export const runAzureToBigQuerySync = async () => {
   console.log(`[ETL] Starting ingestion job for ClientId: ${TARGET_CLIENT_ID}...`);
   let pool: sql.ConnectionPool | undefined;
+  const tempFilePath = path.join(__dirname, `temp_sync_${TARGET_CLIENT_ID}.json`);
 
   try {
     pool = await sql.connect(sqlConfig);
     console.log('[ETL] Connected to Azure SQL.');
 
-    // --- STEP 1: SYNC FINANCIAL FACTS ---
-    const factsResult = await pool.request()
-      .input('clientId', sql.NVarChar, TARGET_CLIENT_ID)
-      .query<BqFinancialRow>(`
+    // ==========================================
+    // STEP 1: SYNC FINANCIAL FACTS (STREAMING FOR HUGE DATA)
+    // ==========================================
+    console.log('[ETL] Extracting Fact Data...');
+    const request = pool.request();
+    request.input('clientId', sql.NVarChar, TARGET_CLIENT_ID);
+    request.stream = true; // Protects Node.js memory
+
+    const writeStream = fs.createWriteStream(tempFilePath);
+    let rowCount = 0;
+
+    await new Promise<void>((resolve, reject) => {
+      request.query(`
         SELECT 
           pd.ClientId AS client_id,
           pd.PlanVersionId AS dataset_id,
@@ -83,17 +74,35 @@ export const runAzureToBigQuerySync = async () => {
         FROM dbo.xp_view_plandata pd
         WHERE pd.ClientId = @clientId
       `);
-    
-    if (factsResult.recordset.length > 0) {
+      
+      request.on('row', (row) => {
+        writeStream.write(JSON.stringify(row) + '\n');
+        rowCount++;
+      });
+
+      request.on('error', reject);
+      request.on('done', () => { writeStream.end(); resolve(); });
+    });
+
+    if (rowCount > 0) {
+      console.log(`[ETL] Loading ${rowCount} fact rows into BigQuery...`);
       await bqClient.query({
         query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_FACTS}\` WHERE client_id = @clientId`,
         params: { clientId: TARGET_CLIENT_ID }
       });
-      await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_FACTS).insert(factsResult.recordset);
-      console.log(`[ETL] Loaded ${factsResult.recordset.length} fact rows.`);
+      
+      // Bulk Load Job (Fast and Cheap)
+      await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_FACTS).load(tempFilePath, {
+        sourceFormat: 'NEWLINE_DELIMITED_JSON',
+        autodetect: false,
+        writeDisposition: 'WRITE_APPEND',
+      });
+      console.log(`[ETL] Fact load complete.`);
     }
 
-    // --- STEP 2: SYNC DIMENSION MAPPING ---
+    // ==========================================
+    // STEP 2: SYNC DIMENSION MAPPING (SMALL DATA = ARRAY INSERT OK)
+    // ==========================================
     const dimsResult = await pool.request()
       .input('clientId', sql.NVarChar, TARGET_CLIENT_ID)
       .query<BqDimMappingRow>(`
@@ -115,7 +124,9 @@ export const runAzureToBigQuerySync = async () => {
       console.log(`[ETL] Loaded ${dimsResult.recordset.length} dimension mappings.`);
     }
 
-    // --- STEP 3: SYNC DIMENSION DATA (Members) ---
+    // ==========================================
+    // STEP 3: SYNC DIMENSION DATA MEMBERS (SMALL DATA = ARRAY INSERT OK)
+    // ==========================================
     const dataResult = await pool.request()
       .input('clientId', sql.NVarChar, TARGET_CLIENT_ID)
       .query<BqDimDataRow>(`
@@ -139,24 +150,19 @@ export const runAzureToBigQuerySync = async () => {
     }
 
     console.log('[ETL] Pipeline completed successfully!');
-
-    // NEW: Clear the cache so the frontend fetches the fresh BigQuery data
     console.log(`[ETL] Triggering cache invalidation for ${TARGET_CLIENT_ID}...`);
     await cacheService.invalidateClientCache(TARGET_CLIENT_ID);
 
   } catch (error: any) {
     console.error('[ETL] Pipeline failed:', error.message);
-    
-    // Unpack BigQuery PartialFailureErrors to see the exact column mismatch
     if (error.name === 'PartialFailureError' && error.errors) {
-      console.error('[ETL] First row error details:', JSON.stringify(error.errors[0], null, 2));
+      console.error('[ETL] BQ Error details:', JSON.stringify(error.errors[0], null, 2));
     }
-    
     process.exit(1);
   } finally {
-    if (pool) {
-      await pool.close();
-    }
+    if (pool) await pool.close();
+    // Always clean up the local temp file to prevent disk exhaustion
+    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
   }
 };
 

@@ -1,4 +1,4 @@
-
+//finalys-app/api/src/controllers/simulationController.ts
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/api.types';
 import { simulationService } from '../services/simulationService'; // Keep this here
@@ -92,6 +92,7 @@ export const simulationController = {
       
       res.status(200).json({ message: 'Simulation undone successfully' });
     } catch (error: any) {
+      console.error("[CONTROLLER] getHistory failed:", error); // <-- Add this!
       res.status(500).json({ error: error.message });
     }
   }

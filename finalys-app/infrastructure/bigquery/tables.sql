@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS `snbx-efcpa-effectplan-vcdm.finalys_dataset.financial
   client_id STRING NOT NULL,
   dataset_id STRING NOT NULL,
   user_id STRING NOT NULL,
+  shared_flag BOOL DEFAULT FALSE, -- <--- ADDED: Mandatory for multi-client isolation and sharing rules
   period_id INT64,
   dim01 STRING,
   dim02 STRING,
@@ -65,4 +66,4 @@ CREATE TABLE IF NOT EXISTS `snbx-efcpa-effectplan-vcdm.finalys_dataset.financial
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 )
 PARTITION BY DATE(created_at)
-CLUSTER BY client_id, dataset_id;
+CLUSTER BY client_id, dataset_id, user_id; -- <--- UPDATED: Added user_id for optimal partition pruning

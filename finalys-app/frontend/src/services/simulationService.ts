@@ -1,4 +1,6 @@
-const API_BASE_URL = (import.meta.env?.VITE_API_URL as string) || 'https://9000-firebase-finalys-1773513026000.cluster-2a24trvdezeggvmpy7fccga2ee.cloudworkstations.dev/api';
+// finalys-app/frontend/src/services/simulationService.ts
+
+const API_BASE_URL = '/api';
 
 export const simulationService = {
   /**
@@ -9,13 +11,12 @@ export const simulationService = {
     coordinates: Record<string, string>;
     oldValue: number;
     userInput: string;
-  }) {
-    // Removed /pivot - now it correctly points to /api/simulate
+  }, authToken: string) { // <-- Strictly typed as string
     const response = await fetch(`${API_BASE_URL}/simulate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // 'Authorization': `Bearer ${token}` // Assuming handled globally or add token if needed
+        'Authorization': `Bearer ${authToken}` // <-- UNCOMMENTED AND ACTIVE
       },
       body: JSON.stringify(data),
     });
@@ -31,9 +32,12 @@ export const simulationService = {
   /**
    * Fetches the history of adjustments
    */
-  async getHistory(datasetId: string) {
-    // Removed /pivot - now it correctly points to /api/adjustments
-    const response = await fetch(`${API_BASE_URL}/adjustments?datasetId=${datasetId}`);
+  async getHistory(datasetId: string, authToken: string) { // <-- Added authToken
+    const response = await fetch(`${API_BASE_URL}/adjustments?datasetId=${datasetId}`, {
+      headers: {
+        'Authorization': `Bearer ${authToken}` // <-- ADDED HEADER
+      }
+    });
     
     if (!response.ok) throw new Error('Failed to fetch history');
     return await response.json();
@@ -42,11 +46,13 @@ export const simulationService = {
   /**
    * Undoes a specific adjustment batch
    */
-  async undoAdjustment(datasetId: string, timestampId: string) {
-    // Removed /pivot - now it correctly points to /api/adjustments/12345
+  async undoAdjustment(datasetId: string, timestampId: string, authToken: string) { // <-- Fixed 'p0' to 'authToken'
     const response = await fetch(`${API_BASE_URL}/adjustments/${encodeURIComponent(timestampId)}`, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}` // <-- ADDED HEADER
+      },
       body: JSON.stringify({ datasetId })
     });
     

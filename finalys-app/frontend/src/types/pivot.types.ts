@@ -3,6 +3,7 @@
 // The request payload that the UI will build and send to the API
 export interface PivotRequestParams {
   datasetIds: string[]; // <-- Updated to array for multi-dataset selection
+  templateId?: string; // NEW: The UI passes this to tell the API which rules to enforce
   dimensions: string[];
   measures: string[];
   filters?: Record<string, any>;

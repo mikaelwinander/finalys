@@ -7,11 +7,12 @@ interface AdjustmentPopoverProps {
     coordinates: Record<string, string>;
     datasetId: string;
   };
+  authToken: string; // <--- Add this
   onSuccess: () => void;
   onClose: () => void;
 }
 
-export const AdjustmentPopover: React.FC<AdjustmentPopoverProps> = ({ cellData, onSuccess, onClose }) => {
+export const AdjustmentPopover: React.FC<AdjustmentPopoverProps> = ({ cellData, authToken, onSuccess, onClose }) => {
   const oldValue = cellData.value;
   
   // Math States
@@ -76,7 +77,7 @@ export const AdjustmentPopover: React.FC<AdjustmentPopoverProps> = ({ cellData, 
         coordinates: cellData.coordinates,
         oldValue: cellData.value,
         userInput: payloadInput
-      });
+      }, authToken); // <--- Pass the token here
       onSuccess(); 
     } catch (error) {
       console.error("Adjustment failed", error);

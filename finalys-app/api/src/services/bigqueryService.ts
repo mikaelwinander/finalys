@@ -1,5 +1,5 @@
-// /api/src/services/bigqueryService.ts
 import { BigQuery } from '@google-cloud/bigquery';
+import { sqlBuilder, PhysicalQueryRequest } from '../utils/sqlBuilder';
 import { logger } from '../utils/logger';
 
 const bqClient = new BigQuery({ projectId: 'snbx-efcpa-effectplan-vcdm' });
@@ -10,142 +10,85 @@ const ALLOWED_DIMENSIONS = [
   'dim07', 'dim08', 'dim09', 'dim10', 'dim11', 'dim12'
 ];
 const ALLOWED_MEASURES = ['amount'];
-
 const NATIVE_DIMENSIONS = ['period_id', 'amount_type_id', 'period'];
 
 export interface PivotQueryRequest {
   clientId: string;
   userId: string;
-  datasetIds: string[]; // <-- ARRAY OF DATASETS
+  datasetIds: string[];
   dimensions: string[];
   measures: string[];
-  filters: Record<string, any>;
-  includeAdjustments: boolean;
+  filters?: Record<string, any>;
+  includeAdjustments?: boolean;
 }
 
 export const bigqueryService = {
   async getPivotAggregation(request: PivotQueryRequest): Promise<any[]> {
-    // 1. UPDATED: Extract datasetIds (array) instead of datasetId (string)
-    const { clientId, datasetIds, dimensions, measures, filters = {}, includeAdjustments = true } = request;
+    const { clientId, userId, datasetIds, dimensions, measures, filters = {}, includeAdjustments = true } = request;
 
     try {
+      // 1. Fetch Mapping
       const mappings = await this.getDimensionMapping(clientId);
 
+      // 2. Translate Dimensions
       const physicalDimensions: string[] = [];
-            
       for (const reqDim of dimensions) {
         if (NATIVE_DIMENSIONS.includes(reqDim)) {
-          const actualCol = reqDim === 'period' ? 'period_id' : reqDim;
-          physicalDimensions.push(actualCol);
+          physicalDimensions.push(reqDim === 'period' ? 'period_id' : reqDim);
           continue;
         }
-
         const mapping = mappings.find(m => m.dim_id === reqDim);
-        if (!mapping) {
-          throw new Error(`Invalid dimension requested: ${reqDim}`);
-        }
-        const paddedPosition = String(mapping.position).padStart(2, '0');
-        physicalDimensions.push(`dim${paddedPosition}`);
+        if (!mapping) throw new Error(`Invalid dimension requested: ${reqDim}`);
+        physicalDimensions.push(`dim${String(mapping.position).padStart(2, '0')}`);
       }
 
-      const safeDimensions = physicalDimensions.filter(dim => ALLOWED_DIMENSIONS.includes(dim));
-      const safeMeasures = measures.filter(measure => ALLOWED_MEASURES.includes(measure));
-
-      if (safeDimensions.length === 0 || safeMeasures.length === 0) {
-        throw new Error('Invalid dimensions or measures requested');
-      }
-
-      // 2. UPDATED: We MUST select and group by dataset_id so the UI can separate the data
-      const selectColumns = `dataset_id, ${safeDimensions.join(', ')}`;
-      const groupByColumns = `dataset_id, ${safeDimensions.join(', ')}`;
-      const selectMeasures = safeMeasures.map(m => `SUM(${m}) AS ${m}`).join(', ');
-
-      let filterSql = '';
-      
-      // 3. UPDATED: Pass datasetIds array into query parameters
-      const queryParams: Record<string, any> = { clientId, datasetIds };
-      
-      Object.entries(filters).forEach(([businessKey, value], index) => {
-        if (!value) return; 
-
-        let physicalCol = '';
-
+      // 3. Translate Filters
+      const physicalFilters: Record<string, any> = {};
+      Object.entries(filters).forEach(([businessKey, value]) => {
+        if (!value) return;
         if (businessKey === 'period') {
-           physicalCol = 'period_id';
+          physicalFilters['period_id'] = value;
         } else if (NATIVE_DIMENSIONS.includes(businessKey)) {
-           physicalCol = businessKey;
+          physicalFilters[businessKey] = value;
         } else {
           const mapping = mappings.find(m => m.dim_id === businessKey);
           if (mapping) {
-            const paddedPosition = String(mapping.position).padStart(2, '0');
-            physicalCol = `dim${paddedPosition}`;
-          } else {
-            logger.warn(`Unmapped filter dimension requested: ${businessKey}`);
-            return; 
+            physicalFilters[`dim${String(mapping.position).padStart(2, '0')}`] = value;
           }
-        }
-
-        if (ALLOWED_DIMENSIONS.includes(physicalCol)) {
-          const paramName = `filterVal${index}`;
-          filterSql += ` AND ${physicalCol} = @${paramName}`;
-          queryParams[paramName] = value; 
-        } else {
-          logger.warn(`Attempted to filter on unsafe physical column: ${physicalCol}`);
         }
       });
 
-      let fromClause = `\`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_data_view\``;
+      // 4. Validate
+      const safeDimensions = physicalDimensions.filter(dim => ALLOWED_DIMENSIONS.includes(dim));
+      const safeMeasures = measures.filter(measure => ALLOWED_MEASURES.includes(measure));
+      if (safeDimensions.length === 0 || safeMeasures.length === 0) throw new Error('Invalid dims/measures');
 
-      if (includeAdjustments) {
-        fromClause = `(
-          SELECT client_id, dataset_id, period_id, amount_type_id,
-                 dim01, dim02, dim03, dim04, dim05, dim06, dim07, dim08, dim09, dim10, dim11, dim12,
-                 amount
-          FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_data_view\`
-          
-          UNION ALL
-          
-          SELECT client_id, dataset_id, period_id, 'Simulated' AS amount_type_id,
-                 dim01, dim02, dim03, dim04, dim05, dim06, dim07, dim08, dim09, dim10, dim11, dim12,
-                 adjustment_amount AS amount
-          FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_adjustments\`
-        )`;
-      }
+      // 5. Build the Query (This calls the UNION ALL logic in sqlBuilder)
+      const physicalRequest: PhysicalQueryRequest = {
+        clientId,
+        userId,
+        datasetIds,
+        dimensions: safeDimensions,
+        measures: safeMeasures,
+        filters: physicalFilters,
+        includeAdjustments
+      };
 
-      // 4. UPDATED: dataset_id IN UNNEST(@datasetIds)
-      const query = `
-        SELECT 
-          ${selectColumns},
-          ${selectMeasures}
-        FROM 
-          ${fromClause}
-        WHERE 
-          client_id = @clientId
-          AND dataset_id IN UNNEST(@datasetIds)
-          ${filterSql}
-        GROUP BY 
-          ${groupByColumns}
-      `;
+      const { query, params } = sqlBuilder.buildPivotQuery(physicalRequest);
 
-      const [job] = await bqClient.createQueryJob({ query, params: queryParams });
+      // 6. Execute Job
+      const [job] = await bqClient.createQueryJob({ query, params, parameterMode: 'NAMED' });
       const [rows] = await job.getQueryResults();
 
-      // 5. UPDATED: Attach datasetId to the mapped results sent to React
-      const translatedRows = rows.map(row => {
-        const translatedRow: any = { 
-          datasetId: row.dataset_id, // Map dataset_id back to UI
-          amount: row.amount 
-        };
-        
+      // 7. Translate results back to business keys for the frontend
+      return rows.map(row => {
+        const translatedRow: any = { datasetId: row.dataset_id, amount: row.amount };
         dimensions.forEach((businessDim, index) => {
-          const physicalCol = safeDimensions[index];
-          translatedRow[businessDim] = row[physicalCol];
+          translatedRow[businessDim] = row[safeDimensions[index]];
         });
-        
         return translatedRow;
       });
 
-      return translatedRows;
     } catch (error: any) {
       logger.error('BigQuery execution failed', { error });
       throw new Error(`BigQuery Error: ${error.message}`);
@@ -153,46 +96,37 @@ export const bigqueryService = {
   },
 
   async getAvailableDatasets(clientId: string): Promise<string[]> {
-    try {
       const query = `
         SELECT DISTINCT dataset_id 
         FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.financial_data_view\`
         WHERE client_id = @clientId
         ORDER BY dataset_id DESC
       `;
-
-      const [job] = await bqClient.createQueryJob({
-        query: query,
-        params: { clientId },
-      });
-      
+      const [job] = await bqClient.createQueryJob({ query, params: { clientId } });
       const [rows] = await job.getQueryResults();
       return rows.map(row => row.dataset_id);
-    } catch (error: any) {
-      logger.error('Failed to fetch available datasets', { error });
-      throw new Error(`BigQuery Datasets Error: ${error.message}`);
-    }
   },
 
   async getDimensionMapping(clientId: string): Promise<any[]> {
-    try {
-      const query = `
-        SELECT dim_id, dim_name, position
-        FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.dimension_mapping\`
-        WHERE client_id = @clientId
-        ORDER BY position ASC
-      `;
+    const query = `
+      SELECT dim_id, dim_name, position
+      FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.dimension_mapping\`
+      WHERE client_id = @clientId
+      ORDER BY position ASC
+    `;
+    const [job] = await bqClient.createQueryJob({ query, params: { clientId } });
+    const [rows] = await job.getQueryResults();
 
-      const [job] = await bqClient.createQueryJob({
-        query: query,
-        params: { clientId },
-      });
-      
-      const [rows] = await job.getQueryResults();
-      return rows;
-    } catch (error: any) {
-      logger.error('Failed to fetch dimension mapping', { error });
-      throw new Error(`BigQuery Mapping Error: ${error.message}`);
-    }
+    const nativeDimensions = [
+      { dim_id: 'period_id', dim_name: 'Period', position: 0 },
+      { dim_id: 'amount_type_id', dim_name: 'Amount Type', position: 0 }
+    ];
+
+    const combinedArray = [...nativeDimensions, ...rows];
+    
+    // NEW: Proof that the service is running this code!
+    logger.info(`[SERVICE] DB returned ${rows.length} rows. Combined array has ${combinedArray.length} rows.`);
+    
+    return combinedArray;
   }
 };

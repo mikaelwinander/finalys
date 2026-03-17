@@ -15,10 +15,10 @@ export const requireTenant = (
     return;
   }
 
-  // Enforce tenant isolation
-  if (!req.user.tenantId) {
-    logger.warn(`User ${req.user.uid} attempted access without a tenant_id claim`);
-    res.status(403).json({ error: 'Forbidden: Tenant context is required for this action' });
+  // Enforce tenant isolation using the updated 'clientId' property
+  if (!req.user.clientId) {
+    logger.warn(`User ${req.user.uid} attempted access without a client_id claim`);
+    res.status(403).json({ error: 'Forbidden: Client context is required for this action' });
     return;
   }
 
