@@ -133,19 +133,43 @@ export const templateService = {
     logger.info(`Template '${templateId}' deleted for client ${clientId}`);
   },
 
-  async updateTemplate(clientId: string, templateId: string, templateName: string) {
+  async updateTemplate(params: {
+    clientId: string;
+    templateId: string;
+    templateName?: string; // Optional: in case they only want to update the layout, not the name
+    rowDimensions: string[];
+    colDimensions: string[];
+    measures: string[];
+    filters: Record<string, any>;
+  }) {
+    // If a new name is provided, update it. Otherwise, keep the existing name.
+    const nameUpdateSql = params.templateName ? `template_name = @templateName,` : ``;
+
     const query = `
       UPDATE \`${BQ_PROJECT}.${DATASET}.report_templates\`
-      SET template_name = @templateName
+      SET 
+        ${nameUpdateSql}
+        row_dimensions = PARSE_JSON(@rowDims),
+        col_dimensions = PARSE_JSON(@colDims),
+        measures = PARSE_JSON(@measures),
+        filters = PARSE_JSON(@filters)
       WHERE client_id = @clientId AND template_id = @templateId
     `;
 
     await bqClient.query({
       query,
-      params: { clientId, templateId, templateName }
+      params: { 
+        clientId: params.clientId, 
+        templateId: params.templateId, 
+        templateName: params.templateName,
+        rowDims: JSON.stringify(params.rowDimensions),
+        colDims: JSON.stringify(params.colDimensions),
+        measures: JSON.stringify(params.measures),
+        filters: JSON.stringify(params.filters || {})
+      }
     });
 
-    logger.info(`Template '${templateId}' renamed to '${templateName}' for client ${clientId}`);
+    logger.info(`Template '${params.templateId}' layout updated for client ${params.clientId}`);
   }
 };
 

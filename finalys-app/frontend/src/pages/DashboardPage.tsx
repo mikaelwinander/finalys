@@ -2,7 +2,7 @@
 
 import { type FC, useState, useEffect, useMemo, useCallback } from 'react';
 
-import { AdminTemplatePopover } from '../components/PivotTable/AdminTemplatePopover';
+//import { AdminTemplatePopover } from '../components/PivotTable/AdminTemplatePopover';
 import { AdjustmentPopover } from '../components/analytics/AdjustmentPopover';
 import { SimulationHistoryPanel } from '../components/analytics/SimulationHistoryPanel';
 import { usePivotData } from '../hooks/usePivotData';
@@ -86,6 +86,43 @@ const DashboardPage: FC = () => {
     fetchTemplates(true);
   }, [fetchTemplates]);
 
+  // Save the current layout as a brand new template
+  const handleSaveAsNewTemplate = async () => {
+    const newName = window.prompt("Enter a name for your new template:");
+    if (!newName) return; // User clicked cancel or left it blank
+
+    try {
+      const payload = {
+        templateName: newName,
+        rowDimensions: activeLayout.rowDims,
+        colDimensions: activeLayout.colDims,
+        measures: activeLayout.measures,
+        filters: {} // Ready for the future!
+      };
+
+      const res = await fetch('/api/templates', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error('Failed to save new template');
+      
+      const data = await res.json();
+      
+      // Refresh the dropdown and immediately select the newly created template!
+      fetchTemplates(); 
+      setSelectedTemplateId(data.templateId);
+      
+    } catch (error) {
+      console.error("Error saving new template:", error);
+      alert("Failed to save template. Check the console.");
+    }
+  };
+
   // Handle applying the selected template manually from the dropdown
   const handleApplyTemplate = (templateId: string) => {
     setSelectedTemplateId(templateId);
@@ -103,6 +140,83 @@ const DashboardPage: FC = () => {
         colDims: template.colDimensions || [],
         measures: template.measures || ['amount']
       });
+    }
+  };
+
+  // Overwrite the currently selected template with the active layout
+  const handleUpdateTemplate = async () => {
+    if (!selectedTemplateId) return;
+
+    try {
+      const payload = {
+        rowDimensions: activeLayout.rowDims,
+        colDimensions: activeLayout.colDims,
+        measures: activeLayout.measures,
+        filters: {} // Ready for Step 2!
+      };
+
+      const res = await fetch(`/api/templates/${selectedTemplateId}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error('Failed to update template');
+      
+      alert("Template layout updated successfully!");
+      fetchTemplates(); // Refresh to ensure data is perfectly in sync
+      
+    } catch (error) {
+      console.error("Error updating template:", error);
+      alert("Failed to update template. Check the console.");
+    }
+  };
+
+  // Handle renaming the currently selected template
+  const handleRenameTemplate = async () => {
+    if (!selectedTemplateId) return;
+
+    // Find the current template so we can show its existing name in the prompt
+    const currentTemplate = templates.find(t => t.id === selectedTemplateId);
+    const currentName = currentTemplate?.name || '';
+
+    // Pop up a native browser input box asking for the new name
+    const newName = window.prompt("Enter a new name for this template:", currentName);
+
+    // If they hit cancel, or didn't change the name, just stop here
+    if (!newName || newName === currentName) return;
+
+    try {
+      // Notice we include the layout data too! Your backend controller 
+      // strictly requires rowDimensions, colDimensions, and measures to be present.
+      const payload = {
+        templateName: newName,
+        rowDimensions: activeLayout.rowDims,
+        colDimensions: activeLayout.colDims,
+        measures: activeLayout.measures,
+        filters: {} 
+      };
+
+      const res = await fetch(`/api/templates/${selectedTemplateId}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error('Failed to rename template');
+      
+      // Refresh the templates list so the dropdown immediately shows the new name!
+      fetchTemplates(); 
+      
+    } catch (error) {
+      console.error("Error renaming template:", error);
+      alert("Failed to rename template. Check the console.");
     }
   };
 
@@ -135,7 +249,7 @@ const DashboardPage: FC = () => {
   };
 
   const [selectedCell, setSelectedCell] = useState<{ value: number; coordinates: Record<string, string>; datasetId: string; } | null>(null);
-  const [isAdminPopoverOpen, setIsAdminPopoverOpen] = useState(false);
+  //const [isAdminPopoverOpen, setIsAdminPopoverOpen] = useState(false);
   const toggleDataset = (ds: string) => {
     setDatasetIds(prev => prev.includes(ds) ? prev.filter(id => id !== ds) : [...prev, ds]);
   };
@@ -264,8 +378,8 @@ const DashboardPage: FC = () => {
           <div className="flex items-center gap-4">
             
             {/* 1. Load Template Dropdown */}
-            {/* 1. Load Template Dropdown & Delete Button */}
-            <div className="flex items-center gap-2 pr-4 border-r border-gray-300">
+{/* 1. Load Template Dropdown & Management Icons */}
+<div className="flex items-center gap-2 pr-4 border-r border-gray-300">
               <span className="text-sm font-medium text-gray-700 whitespace-nowrap">View:</span>
               
               <div className="flex items-center gap-1">
@@ -280,7 +394,38 @@ const DashboardPage: FC = () => {
                   ))}
                 </select>
 
-                {/* Only show the delete button if a saved template is actually selected! */}
+                {/* ➕ Save As New (Always visible so they can save Custom layouts) */}
+                <button
+                  onClick={handleSaveAsNewTemplate}
+                  className="p-1.5 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-md transition-colors border border-transparent hover:border-indigo-200"
+                  title="Save as New Template"
+                >
+                  ➕
+                </button>
+
+                {/* 💾 Save Overwrite Button */}
+                {selectedTemplateId && (
+                  <button
+                    onClick={handleUpdateTemplate}
+                    className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors border border-transparent hover:border-blue-200"
+                    title="Overwrite Template Layout"
+                  >
+                    💾
+                  </button>
+                )}
+
+                {/* ✏️ Rename Button */}
+                {selectedTemplateId && (
+                  <button
+                    onClick={handleRenameTemplate}
+                    className="p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors border border-transparent hover:border-green-200"
+                    title="Rename Template"
+                  >
+                    ✏️
+                  </button>
+                )}
+
+                {/* 🗑️ Delete Button */}
                 {selectedTemplateId && (
                   <button
                     onClick={handleDeleteTemplate}
@@ -314,25 +459,18 @@ const DashboardPage: FC = () => {
             </div>
 
             {/* 3. User Analysis Tools */}
-            {/* 3. User Analysis Tools */}
             <button 
               onClick={() => {
                 // FORCE SYNC: Make the drawer exactly match the live matrix before opening
                 dragDropState.applyLayout(activeLayout.rowDims, activeLayout.colDims, activeLayout.measures);
-                setIsDrawerOpen(true);
+                setIsDrawerOpen(true); // <--- WE ADDED THIS BACK!
               }} 
               className="px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-100 transition-colors flex items-center gap-2 shadow-sm"
             >
-              <span>📊</span> Customize Layout
+              <span>📊</span> Layout
             </button>
 
             {/* 4. Admin Setup Tools */}
-            <button 
-              onClick={() => setIsAdminPopoverOpen(true)} 
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 shadow-sm transition-colors flex items-center gap-2"
-            >
-              <span>⚙️</span> Admin Workspace
-            </button>
             
             {/* 5. Refresh Button */}
             <button 
@@ -401,55 +539,17 @@ const DashboardPage: FC = () => {
           />
         </div>
       )}
-
-      <AdminTemplatePopover 
-        isOpen={isAdminPopoverOpen}
-        onClose={() => setIsAdminPopoverOpen(false)}
-        onSaveTemplate={async (templateParams) => {
-          try {
-            // 1. Package the current Drag & Drop state into the payload
-            const payload = {
-              templateName: templateParams.name,
-              description: templateParams.description,
-              isDefault: templateParams.isDefault,
-              rowDimensions: dragDropState.rowDims,
-              colDimensions: dragDropState.colDims,
-              measures: dragDropState.measures,
-              filters: {} // You can hook up your active filters here later!
-            };
-
-            // 2. Send it to your new Node backend endpoint
-            const res = await fetch('/api/templates', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` 
-              },
-              body: JSON.stringify(payload)
-            });
-
-            if (!res.ok) throw new Error('Failed to save template');
-            
-            alert(`Template "${templateParams.name}" saved successfully!`);
-            fetchTemplates(); // Force the dropdown to grab the new template!
-            setIsAdminPopoverOpen(false);
-            
-          } catch (error) {
-            console.error("Error saving template:", error);
-            alert("Failed to save template. Check the console.");
-          }
-        }}
-      />
+      {/* RESTORED: Configuration Drawer */}
       <ConfigurationDrawer 
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         onCancel={() => {
-          // If they cancel, revert the drawer's draft state back to whatever the live matrix currently looks like!
+          // Revert draft state back to live state on cancel
           dragDropState.applyLayout(activeLayout.rowDims, activeLayout.colDims, activeLayout.measures);
           setIsDrawerOpen(false);
         }}
         onApply={() => {
-          // If they apply, push the drawer's draft state into the live matrix!
+          // Push draft state into the live active layout!
           setActiveLayout({
             rowDims: dragDropState.rowDims,
             colDims: dragDropState.colDims,
@@ -462,7 +562,11 @@ const DashboardPage: FC = () => {
         availableMeasures={AVAILABLE_MEASURES}
         resolveDim={resolveDim}
         resolveMeasure={resolveMeasure}
-        onMeasureSettingsClick={(id) => { setActiveSettingsMeasure(id); setIsSettingsModalOpen(true); }}
+        onMeasureSettingsClick={(id) => { 
+          // You may need to uncomment setActiveSettingsMeasure if it complains!
+          setActiveSettingsMeasure(id); 
+          setIsSettingsModalOpen(true); 
+        }}
       />
     </div>
   );

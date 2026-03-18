@@ -60,22 +60,34 @@ export const templateController = {
     }
   },
 
-  async renameTemplate(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async updateTemplate(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const clientId = req.user!.clientId;
       const templateId = req.params.templateId as string;
-      const { templateName } = req.body;
+      
+      // We pull the layout arrays out of the request body
+      const { templateName, rowDimensions, colDimensions, measures, filters } = req.body;
 
-      if (!templateId || !templateName) {
-        res.status(400).json({ error: 'Template ID and new name are required' });
+      if (!templateId || !rowDimensions || !colDimensions || !measures) {
+        res.status(400).json({ error: 'Missing required layout data for update' });
         return;
       }
 
-      await templateService.updateTemplate(clientId, templateId, templateName);
-      res.status(200).json({ success: true, message: 'Template renamed successfully' });
+      // We pass everything as a single object to match your new service signature!
+      await templateService.updateTemplate({
+        clientId,
+        templateId,
+        templateName,
+        rowDimensions,
+        colDimensions,
+        measures,
+        filters
+      });
+      
+      res.status(200).json({ success: true, message: 'Template updated successfully' });
     } catch (error: any) {
-      logger.error('Failed to rename template', { error: error.message });
-      res.status(500).json({ error: 'Internal Server Error while renaming template' });
+      logger.error('Failed to update template', { error: error.message });
+      res.status(500).json({ error: 'Internal Server Error while updating template' });
     }
   }
 };

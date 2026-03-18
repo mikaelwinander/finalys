@@ -5,6 +5,7 @@ import { simulationService } from '../services/simulationService'; // Keep this 
 import { bigqueryService } from '../services/bigqueryService';     // Add this separate import
 import { aiService } from '../services/aiService'; // Hypothetical AI wrapper
 import { cacheService } from '../services/cacheService';
+import { logger } from '../utils/logger'; // <--- FIX 3: Added the logger import!
 
 export const simulationController = {
   async processAdjustment(req: AuthenticatedRequest, res: Response) {
@@ -74,6 +75,7 @@ export const simulationController = {
     }
   },
 
+  /*
   async undoAdjustment(req: AuthenticatedRequest, res: Response) {
     try {
       const clientId = req.user!.clientId;
@@ -94,6 +96,36 @@ export const simulationController = {
     } catch (error: any) {
       console.error("[CONTROLLER] getHistory failed:", error); // <-- Add this!
       res.status(500).json({ error: error.message });
+    }
+  },
+*/
+
+  async undoAdjustment(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const clientId = req.user!.clientId;
+      
+      // FIX: Explicitly cast timestampId as a string
+      const timestampId = req.params.timestampId as string;
+      
+      // Extract datasetId from the URL query string
+      const datasetId = req.query.datasetId as string;
+
+      if (!datasetId || !timestampId) {
+        res.status(400).json({ error: 'Missing datasetId or timestampId' });
+        return;
+      }
+
+      // 1. Delete the adjustment from BigQuery
+      await simulationService.undoAdjustment(clientId, datasetId, timestampId);
+
+      // 2. Clear the cache so the Pivot Table recalculates instantly!
+      await cacheService.invalidateClientCache(clientId);
+
+      res.status(200).json({ success: true, message: 'Adjustment undone successfully' });
+      
+    } catch (error: any) {
+      logger.error('Failed to undo adjustment', { error: error.message });
+      res.status(500).json({ error: 'Internal Server Error while undoing adjustment' });
     }
   }
 };

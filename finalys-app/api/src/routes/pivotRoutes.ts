@@ -41,12 +41,14 @@ router.delete(
   simulationController.undoAdjustment
 );
 
-// 🟢 PUBLIC (All users in the tenant can load templates)
+// GET and POST (Loading and Saving)
 router.get('/templates', requireAuth, requireTenant, templateController.getTemplates);
+router.post('/templates', requireAuth, requireTenant, templateController.saveTemplate);
 
-// 🔴 ADMIN ONLY (Create, Rename, Delete)
-router.post('/templates', requireAuth, requireTenant, requireAdmin, templateController.saveTemplate);
-router.put('/templates/:templateId', requireAuth, requireTenant, requireAdmin, templateController.renameTemplate);
-router.delete('/templates/:templateId', requireAuth, requireTenant, requireAdmin, templateController.deleteTemplate);
+// PUT (The new Overwrite/Rename route!)
+router.put('/templates/:templateId', requireAuth, requireTenant, templateController.updateTemplate);
+
+// DELETE
+router.delete('/templates/:templateId', requireAuth, requireTenant, templateController.deleteTemplate);
 
 export default router;
