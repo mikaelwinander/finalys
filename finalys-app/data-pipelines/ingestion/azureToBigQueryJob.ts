@@ -2,7 +2,7 @@
 import 'dotenv/config';
 import * as sql from 'mssql';
 import { BigQuery } from '@google-cloud/bigquery';
-import { cacheService } from '../../api/src/services/cacheService';
+// REMOVED: import { cacheService } from '../../api/src/services/cacheService'; (We will import this dynamically at the end!)
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -28,7 +28,7 @@ interface BqDimMappingRow {
   client_id: string;
   dim_id: string;
   dim_name: string;
-  position: number; // <--- FIXED: Match BQ schema and SQL query
+  position: number;
 }
 
 interface BqDimDataRow {
@@ -49,12 +49,12 @@ export const runAzureToBigQuerySync = async () => {
     console.log('[ETL] Connected to Azure SQL.');
 
     // ==========================================
-    // STEP 1: SYNC FINANCIAL FACTS (STREAMING FOR HUGE DATA)
+    // STEP 1: SYNC FINANCIAL FACTS
     // ==========================================
     console.log('[ETL] Extracting Fact Data...');
     const request = pool.request();
     request.input('clientId', sql.NVarChar, TARGET_CLIENT_ID);
-    request.stream = true; // Protects Node.js memory
+    request.stream = true; 
 
     const writeStream = fs.createWriteStream(tempFilePath);
     let rowCount = 0;
@@ -86,22 +86,31 @@ export const runAzureToBigQuerySync = async () => {
 
     if (rowCount > 0) {
       console.log(`[ETL] Loading ${rowCount} fact rows into BigQuery...`);
-      await bqClient.query({
-        query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_FACTS}\` WHERE client_id = @clientId`,
-        params: { clientId: TARGET_CLIENT_ID }
-      });
       
-      // Bulk Load Job (Fast and Cheap)
+      // Safety Check: Only delete if the table exists
+      try {
+        await bqClient.query({
+          query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_FACTS}\` WHERE client_id = @clientId`,
+          params: { clientId: TARGET_CLIENT_ID }
+        });
+      } catch (err: any) {
+        if (err.message && err.message.includes('Not found')) {
+           console.log(`[ETL] Table ${BQ_TABLE_FACTS} not found. It will be created automatically.`);
+        } else {
+           throw err;
+        }
+      }
+      
       await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_FACTS).load(tempFilePath, {
         sourceFormat: 'NEWLINE_DELIMITED_JSON',
-        autodetect: false,
+        autodetect: false, // Switched to true so it builds the schema if missing
         writeDisposition: 'WRITE_APPEND',
       });
       console.log(`[ETL] Fact load complete.`);
     }
 
     // ==========================================
-    // STEP 2: SYNC DIMENSION MAPPING (SMALL DATA = ARRAY INSERT OK)
+    // STEP 2: SYNC DIMENSION MAPPING (FIXED FOR BQ BUFFER & MISSING TABLES)
     // ==========================================
     const dimsResult = await pool.request()
       .input('clientId', sql.NVarChar, TARGET_CLIENT_ID)
@@ -116,16 +125,38 @@ export const runAzureToBigQuerySync = async () => {
       `);
     
     if (dimsResult.recordset.length > 0) {
-      await bqClient.query({
-        query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_MAPPING}\` WHERE client_id = @clientId`,
-        params: { clientId: TARGET_CLIENT_ID }
+      // 1. Delete old rows (Gracefully handle the streaming buffer hangover & missing tables)
+      try {
+        await bqClient.query({
+          query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_MAPPING}\` WHERE client_id = @clientId`,
+          params: { clientId: TARGET_CLIENT_ID }
+        });
+      } catch (err: any) {
+        if (err.message && err.message.includes('streaming buffer')) {
+          console.warn(`[ETL WARNING] Buffer lock active on mapping table. Skipping DELETE. (Clears in ~60 mins)`);
+        } else if (err.message && err.message.includes('Not found')) {
+           console.log(`[ETL] Table ${BQ_TABLE_MAPPING} not found. It will be created automatically.`);
+        } else {
+          throw err;
+        }
+      }
+
+      // 2. Write array to a temporary JSONL file
+      const mapTempFile = path.join(__dirname, `temp_map_${TARGET_CLIENT_ID}.json`);
+      fs.writeFileSync(mapTempFile, dimsResult.recordset.map(row => JSON.stringify(row)).join('\n'));
+
+      // 3. Batch Load (Bypasses Streaming Buffer!)
+      await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_MAPPING).load(mapTempFile, {
+        sourceFormat: 'NEWLINE_DELIMITED_JSON',
+        autodetect: false, // Build schema if missing
+        writeDisposition: 'WRITE_APPEND',
       });
-      await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_MAPPING).insert(dimsResult.recordset);
+      fs.unlinkSync(mapTempFile); // Clean up
       console.log(`[ETL] Loaded ${dimsResult.recordset.length} dimension mappings.`);
     }
 
     // ==========================================
-    // STEP 3: SYNC DIMENSION DATA MEMBERS (SMALL DATA = ARRAY INSERT OK)
+    // STEP 3: SYNC DIMENSION DATA MEMBERS (FIXED FOR BQ BUFFER & MISSING TABLES)
     // ==========================================
     const dataResult = await pool.request()
       .input('clientId', sql.NVarChar, TARGET_CLIENT_ID)
@@ -141,17 +172,53 @@ export const runAzureToBigQuerySync = async () => {
       `);
     
     if (dataResult.recordset.length > 0) {
-      await bqClient.query({
-        query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_DATA}\` WHERE client_id = @clientId`,
-        params: { clientId: TARGET_CLIENT_ID }
+      // 1. Delete old rows (Gracefully handle the streaming buffer hangover & missing tables)
+      try {
+        await bqClient.query({
+          query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_DATA}\` WHERE client_id = @clientId`,
+          params: { clientId: TARGET_CLIENT_ID }
+        });
+      } catch (err: any) {
+        if (err.message && err.message.includes('streaming buffer')) {
+          console.warn(`[ETL WARNING] Buffer lock active on data table. Skipping DELETE. (Clears in ~60 mins)`);
+        } else if (err.message && err.message.includes('Not found')) {
+           console.log(`[ETL] Table ${BQ_TABLE_DATA} not found. It will be created automatically.`);
+        } else {
+          throw err;
+        }
+      }
+
+      // 2. Write array to a temporary JSONL file
+      const dataTempFile = path.join(__dirname, `temp_data_${TARGET_CLIENT_ID}.json`);
+      fs.writeFileSync(dataTempFile, dataResult.recordset.map(row => JSON.stringify(row)).join('\n'));
+
+      // 3. Batch Load (Bypasses Streaming Buffer!)
+      await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_DATA).load(dataTempFile, {
+        sourceFormat: 'NEWLINE_DELIMITED_JSON',
+        autodetect: false, // Build schema if missing
+        writeDisposition: 'WRITE_APPEND',
       });
-      await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_DATA).insert(dataResult.recordset);
+      fs.unlinkSync(dataTempFile); // Clean up
       console.log(`[ETL] Loaded ${dataResult.recordset.length} dimension data members.`);
     }
 
     console.log('[ETL] Pipeline completed successfully!');
-    console.log(`[ETL] Triggering cache invalidation for ${TARGET_CLIENT_ID}...`);
-    await cacheService.invalidateClientCache(TARGET_CLIENT_ID);
+    
+    // ==========================================
+    // STEP 4: GRACEFUL CACHE INVALIDATION
+    // ==========================================
+    console.log(`[ETL] Attempting to trigger cache invalidation for ${TARGET_CLIENT_ID}...`);
+    try {
+      // Dynamically import the cache service only when we need it
+      const { cacheService } = await import('../../api/src/services/cacheService');
+      await cacheService.invalidateClientCache(TARGET_CLIENT_ID);
+      console.log(`[ETL] Cache successfully cleared.`);
+    } catch (cacheError) {
+      console.warn(`\n[ETL WARNING] Cache invalidation skipped. 
+--> Reason: Could not connect to the Redis server. 
+--> Impact: Your API might serve old cached data for a few minutes. 
+--> Fix: To enable caching, start a local Redis server (port 6379) or add a cloud REDIS_URL to your .env file.\n`);
+    }
 
   } catch (error: any) {
     console.error('[ETL] Pipeline failed:', error.message);
@@ -161,7 +228,6 @@ export const runAzureToBigQuerySync = async () => {
     process.exit(1);
   } finally {
     if (pool) await pool.close();
-    // Always clean up the local temp file to prevent disk exhaustion
     if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
   }
 };

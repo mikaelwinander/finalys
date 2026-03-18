@@ -37,5 +37,26 @@ export const templateController = {
       logger.error('Failed to fetch templates', { error: error.message });
       res.status(500).json({ error: 'Internal Server Error while fetching templates' });
     }
+  },
+
+  async deleteTemplate(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const clientId = req.user!.clientId;
+      
+      // FIX: Explicitly tell TypeScript this is a single string
+      const templateId = req.params.templateId as string; 
+
+      if (!templateId) {
+        res.status(400).json({ error: 'Template ID is required' });
+        return;
+      }
+
+      await templateService.deleteTemplate(clientId, templateId);
+      
+      res.status(200).json({ success: true, message: 'Template deleted' });
+    } catch (error: any) {
+      logger.error('Failed to delete template', { error: error.message });
+      res.status(500).json({ error: 'Internal Server Error while deleting template' });
+    }
   }
 };

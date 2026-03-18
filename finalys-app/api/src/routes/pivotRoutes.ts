@@ -42,4 +42,6 @@ router.delete(
 router.post('/templates', requireAuth, requireTenant, templateController.saveTemplate);
 router.get('/templates', requireAuth, requireTenant, templateController.getTemplates);
 
+router.delete('/templates/:templateId', requireAuth, requireTenant, templateController.deleteTemplate);
+
 export default router;

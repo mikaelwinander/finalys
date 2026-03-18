@@ -117,5 +117,20 @@ export const templateService = {
       measures: JSON.parse(row.measures),
       filters: JSON.parse(row.filters)
     }));
+  },
+
+  async deleteTemplate(clientId: string, templateId: string) {
+    const query = `
+      DELETE FROM \`${BQ_PROJECT}.${DATASET}.report_templates\`
+      WHERE client_id = @clientId AND template_id = @templateId
+    `;
+
+    await bqClient.query({
+      query,
+      params: { clientId, templateId }
+    });
+
+    logger.info(`Template '${templateId}' deleted for client ${clientId}`);
   }
 };
+

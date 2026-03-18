@@ -1,3 +1,5 @@
+//finalys-app/frontend/src/pages/DashboardPage.tsx
+
 import { type FC, useState, useEffect, useMemo, useCallback } from 'react';
 
 import { AdminTemplatePopover } from '../components/PivotTable/AdminTemplatePopover';
@@ -9,9 +11,9 @@ import { PivotTable } from '../components/PivotTable/PivotTable';
 //import { PivotDropZones } from '../components/PivotTable/PivotDropZones';
 //import { DraggableCard } from '../components/PivotTable/DraggableCard';
 import { useAuth } from '../hooks/useAuth'; 
-import { simulationService } from '../services/simulationService';
 import { PivotSettingsModal } from '../components/PivotTable/PivotSettingsModal';
 import { ConfigurationDrawer } from '../components/PivotTable/ConfigurationDrawer';
+
 
 const AVAILABLE_MEASURES = [{ id: 'amount', label: 'Amount (Sum)' }];
 const FALLBACK_DIMENSIONS = [
@@ -77,7 +79,7 @@ const DashboardPage: FC = () => {
     } catch (error) {
       console.error("Failed to load templates", error);
     }
-  }, [token, dragDropState]); // Added dragDropState to dependencies
+  }, [token]); // Added dragDropState to dependencies
 
   // UPDATED: Pass 'true' so the auto-load only happens when the dashboard first opens
   useEffect(() => {
@@ -161,14 +163,26 @@ const DashboardPage: FC = () => {
     includeAdjustments 
   });
 
-  // --- RESTORED: Simulation History & Undo Logic ---
+  // --- RESTORED: Simulation History & Undo Logic (Using API Proxy!) ---
   const fetchHistory = useCallback(async () => {
-    if (!datasetIds.length || !token) return; // Wait for token
+    if (!datasetIds.length || !token) return; // Wait for token and dataset
     setIsHistoryLoading(true);
     try {
-      // Pass the token!
-      const historyData = await simulationService.getHistory(datasetIds[0], token); 
-      setHistory(historyData);
+      // 1. Ask Express for the history data instead of BigQuery directly
+      const response = await fetch(`/api/adjustments?datasetId=${datasetIds[0]}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // Pass Firebase auth token
+        }
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch history from API');
+      
+      const json = await response.json();
+      // Handle both { data: [...] } format or direct array format from your backend
+      setHistory(json.data || json || []); 
+      
     } catch (error) {
       console.error("Failed to load history", error);
     } finally {
@@ -179,10 +193,21 @@ const DashboardPage: FC = () => {
   const handleUndo = async (timestampId: string) => {
     if (!window.confirm("Are you sure you want to undo this simulation?")) return;
     try {
-      // Pass the token!
-      await simulationService.undoAdjustment(datasetIds[0], timestampId, token!);
-      refetch(); 
+      // 2. Ask Express to delete the adjustment by its timestamp ID
+      const response = await fetch(`/api/adjustments/${timestampId}?datasetId=${datasetIds[0]}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) throw new Error('Failed to undo simulation via API');
+      
+      refetch(); // Refresh the main Pivot Table
+      fetchHistory(); // Refresh the History Panel
+      
     } catch (error) {
+      console.error("Undo error:", error);
       alert("Failed to undo simulation.");
     }
   };
