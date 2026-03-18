@@ -131,6 +131,21 @@ export const templateService = {
     });
 
     logger.info(`Template '${templateId}' deleted for client ${clientId}`);
+  },
+
+  async updateTemplate(clientId: string, templateId: string, templateName: string) {
+    const query = `
+      UPDATE \`${BQ_PROJECT}.${DATASET}.report_templates\`
+      SET template_name = @templateName
+      WHERE client_id = @clientId AND template_id = @templateId
+    `;
+
+    await bqClient.query({
+      query,
+      params: { clientId, templateId, templateName }
+    });
+
+    logger.info(`Template '${templateId}' renamed to '${templateName}' for client ${clientId}`);
   }
 };
 

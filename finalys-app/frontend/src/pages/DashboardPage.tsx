@@ -106,6 +106,34 @@ const DashboardPage: FC = () => {
     }
   };
 
+  // Handle deleting the currently selected template
+  const handleDeleteTemplate = async () => {
+    if (!selectedTemplateId) return;
+    
+    // Add a quick safeguard so users don't accidentally delete their work!
+    if (!window.confirm("Are you sure you want to delete this template?")) return;
+
+    try {
+      const res = await fetch(`/api/templates/${selectedTemplateId}`, {
+        method: 'DELETE',
+        headers: { 
+          'Authorization': `Bearer ${token}` 
+        }
+      });
+
+      if (!res.ok) throw new Error('Failed to delete template');
+
+      // 1. Refresh the dropdown list from the backend
+      fetchTemplates(); 
+      // 2. Reset the dropdown back to "-- Custom --"
+      setSelectedTemplateId(''); 
+      
+    } catch (error) {
+      console.error("Error deleting template:", error);
+      alert("Failed to delete template. Check the console.");
+    }
+  };
+
   const [selectedCell, setSelectedCell] = useState<{ value: number; coordinates: Record<string, string>; datasetId: string; } | null>(null);
   const [isAdminPopoverOpen, setIsAdminPopoverOpen] = useState(false);
   const toggleDataset = (ds: string) => {
@@ -236,18 +264,33 @@ const DashboardPage: FC = () => {
           <div className="flex items-center gap-4">
             
             {/* 1. Load Template Dropdown */}
+            {/* 1. Load Template Dropdown & Delete Button */}
             <div className="flex items-center gap-2 pr-4 border-r border-gray-300">
               <span className="text-sm font-medium text-gray-700 whitespace-nowrap">View:</span>
-              <select
-                value={selectedTemplateId}
-                onChange={(e) => handleApplyTemplate(e.target.value)}
-                className="text-sm border border-gray-300 rounded-md py-1.5 pl-2 pr-8 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
-              >
-                <option value="">-- Custom --</option>
-                {templates.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+              
+              <div className="flex items-center gap-1">
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => handleApplyTemplate(e.target.value)}
+                  className="text-sm border border-gray-300 rounded-md py-1.5 pl-2 pr-8 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
+                >
+                  <option value="">-- Custom --</option>
+                  {templates.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+
+                {/* Only show the delete button if a saved template is actually selected! */}
+                {selectedTemplateId && (
+                  <button
+                    onClick={handleDeleteTemplate}
+                    className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors border border-transparent hover:border-red-200"
+                    title="Delete Template"
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* 2. Global Adjustments Toggle */}

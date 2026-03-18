@@ -4,6 +4,8 @@ import { pivotController } from '../controllers/pivotController';
 import { requireAuth } from '../middleware/authMiddleware';
 import { requireTenant } from '../middleware/tenantMiddleware';
 import { templateController } from '../controllers/templateController';
+import { requireAdmin } from '../middleware/rbacMiddleware';
+
 
 const router = Router();
 
@@ -39,9 +41,12 @@ router.delete(
   simulationController.undoAdjustment
 );
 
-router.post('/templates', requireAuth, requireTenant, templateController.saveTemplate);
+// 🟢 PUBLIC (All users in the tenant can load templates)
 router.get('/templates', requireAuth, requireTenant, templateController.getTemplates);
 
-router.delete('/templates/:templateId', requireAuth, requireTenant, templateController.deleteTemplate);
+// 🔴 ADMIN ONLY (Create, Rename, Delete)
+router.post('/templates', requireAuth, requireTenant, requireAdmin, templateController.saveTemplate);
+router.put('/templates/:templateId', requireAuth, requireTenant, requireAdmin, templateController.renameTemplate);
+router.delete('/templates/:templateId', requireAuth, requireTenant, requireAdmin, templateController.deleteTemplate);
 
 export default router;

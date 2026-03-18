@@ -58,5 +58,24 @@ export const templateController = {
       logger.error('Failed to delete template', { error: error.message });
       res.status(500).json({ error: 'Internal Server Error while deleting template' });
     }
+  },
+
+  async renameTemplate(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const clientId = req.user!.clientId;
+      const templateId = req.params.templateId as string;
+      const { templateName } = req.body;
+
+      if (!templateId || !templateName) {
+        res.status(400).json({ error: 'Template ID and new name are required' });
+        return;
+      }
+
+      await templateService.updateTemplate(clientId, templateId, templateName);
+      res.status(200).json({ success: true, message: 'Template renamed successfully' });
+    } catch (error: any) {
+      logger.error('Failed to rename template', { error: error.message });
+      res.status(500).json({ error: 'Internal Server Error while renaming template' });
+    }
   }
 };
