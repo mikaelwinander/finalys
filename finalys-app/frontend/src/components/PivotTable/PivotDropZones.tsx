@@ -11,14 +11,14 @@ interface PivotDropZonesProps {
   handleDragOver: (e: React.DragEvent) => void;
   handleDrop: (e: React.DragEvent, targetZone: string) => void;
   resolveDim: (id: string) => { id: string; label: string };
-  resolveMeasure: (id: string) => { id: string; label: string };
-  onMeasureSettingsClick: (id: string) => void;
+  resolveMeasure: (id: string) => { id: string; label: string }; // <-- ADD THIS BACK!
+  onDimClick: (id: string) => void; // NEW: Replaces onMeasureSettingsClick
 }
 
 export const PivotDropZones: React.FC<PivotDropZonesProps> = ({
-  rowDims, colDims, filterDims, measures,
+  rowDims, colDims, filterDims, measures, // <-- ADD THIS BACK!
   handleDragStart, handleDragEnd, handleDragOver, handleDrop,
-  resolveDim, resolveMeasure, onMeasureSettingsClick
+  resolveDim, resolveMeasure, onDimClick // <-- ADD THIS BACK!
 }) => {
 
   const emptyZoneText = "Drag fields here";
@@ -38,10 +38,12 @@ export const PivotDropZones: React.FC<PivotDropZonesProps> = ({
         <div className="flex flex-wrap gap-2 flex-1 items-start">
           {filterDims.length === 0 && <span className="text-sm text-gray-400 italic mt-1">{emptyZoneText}</span>}
           {filterDims.map((id, index) => (
-            <DraggableCard 
-              key={`filter-${id}`} item={resolveDim(id)} zone="filter" index={index}
-              onDragStart={handleDragStart} onDragEnd={handleDragEnd}
-            />
+            <div key={`filter-${id}`} onClick={() => onDimClick(id)} className="cursor-pointer">
+              <DraggableCard 
+                item={resolveDim(id)} zone="filter" index={index}
+                onDragStart={handleDragStart} onDragEnd={handleDragEnd}
+              />
+            </div>
           ))}
         </div>
       </div>
@@ -61,10 +63,12 @@ export const PivotDropZones: React.FC<PivotDropZonesProps> = ({
           <div className="flex flex-col gap-2 flex-1">
             {rowDims.length === 0 && <span className="text-sm text-gray-400 italic">{emptyZoneText}</span>}
             {rowDims.map((id, index) => (
-              <DraggableCard 
-                key={`row-${id}`} item={resolveDim(id)} zone="row" index={index}
-                onDragStart={handleDragStart} onDragEnd={handleDragEnd}
-              />
+              <div key={`row-${id}`} onClick={() => onDimClick(id)} className="cursor-pointer">
+                <DraggableCard 
+                  item={resolveDim(id)} zone="row" index={index}
+                  onDragStart={handleDragStart} onDragEnd={handleDragEnd}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -84,29 +88,9 @@ export const PivotDropZones: React.FC<PivotDropZonesProps> = ({
             <div className="flex flex-wrap gap-2 flex-1 items-start">
               {colDims.length === 0 && <span className="text-sm text-gray-400 italic mt-1">{emptyZoneText}</span>}
               {colDims.map((id, index) => (
-                <DraggableCard 
-                  key={`col-${id}`} item={resolveDim(id)} zone="col" index={index}
-                  onDragStart={handleDragStart} onDragEnd={handleDragEnd}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* BOTTOM RIGHT: Measures (Values) */}
-          <div 
-            className="flex-1 min-h-[120px] bg-emerald-50/30 border-2 border-dashed border-emerald-300 rounded-lg p-4 flex flex-col transition-colors hover:border-emerald-400 hover:bg-emerald-50"
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, 'measure')}
-          >
-            <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <span>∑</span> Values
-            </h4>
-            <div className="flex flex-wrap gap-2 flex-1 items-start">
-              {measures.length === 0 && <span className="text-sm text-emerald-600/60 italic mt-1">{emptyZoneText}</span>}
-              {measures.map((id, index) => (
-                <div key={`measure-${id}`} onClick={() => onMeasureSettingsClick(id)} className="cursor-pointer">
+                <div key={`col-${id}`} onClick={() => onDimClick(id)} className="cursor-pointer">
                   <DraggableCard 
-                    item={resolveMeasure(id)} zone="measure" index={index}
+                    item={resolveDim(id)} zone="col" index={index}
                     onDragStart={handleDragStart} onDragEnd={handleDragEnd}
                   />
                 </div>
@@ -114,9 +98,29 @@ export const PivotDropZones: React.FC<PivotDropZonesProps> = ({
             </div>
           </div>
 
+          {/* BOTTOM RIGHT: Preset Measures (Values) - NOT a drop zone! */}
+          <div className="flex-1 min-h-[120px] bg-emerald-50/30 border-2 border-dashed border-emerald-300 rounded-lg p-4 flex flex-col">
+            <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+              <span>∑</span> Values (Preset)
+            </h4>
+            <div className="flex flex-wrap gap-2 flex-1 items-start">
+              {measures.map((id) => (
+                <div 
+                  key={`measure-${id}`} 
+                  onClick={() => onDimClick(id)} 
+                  className="cursor-pointer px-3 py-1.5 bg-white border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-emerald-50 hover:border-emerald-300 transition-colors flex items-center gap-2"
+                >
+                  <span className="text-emerald-500">∑</span>
+                  {resolveMeasure(id).label}
+                  <span className="text-gray-400 text-xs ml-1">⚙️</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
         </div>
+
       </div>
-      
     </div>
   );
 };

@@ -30,20 +30,22 @@ const DashboardPage: FC = () => {
   const [availableDimensions, setAvailableDimensions] = useState<{id: string, label: string}[]>(FALLBACK_DIMENSIONS);
   const [workspaceStatus, setWorkspaceStatus] = useState<'loading' | 'ready' | 'empty' | 'auth_error' | 'api_error'>('loading');
 
-  const dragDropState = usePivotDragDrop(AVAILABLE_MEASURES); // This is now your DRAFT state
+  const dragDropState = usePivotDragDrop();
 
   // NEW: This is your LIVE state. The table only updates when this changes!
   const [activeLayout, setActiveLayout] = useState({
     rowDims: [] as string[],
     colDims: [] as string[],
-    measures: ['amount'] as string[]
+    filterDims: [] as string[], // <-- NEW!
+    measures: ['amount'] as string[],
+    dimensionSettings: {} as Record<string, any> // <-- NEW!
   });
 
   const [includeAdjustments, setIncludeAdjustments] = useState(true);
   const [showVariance, setShowVariance] = useState(false);
   const [datasetLayout, setDatasetLayout] = useState<'col' | 'row'>('col');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [activeSettingsMeasure, setActiveSettingsMeasure] = useState<string | null>(null);
+  const [activeSettingsMeasure] = useState<string | null>(null);
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   // NEW: Template State
@@ -138,7 +140,9 @@ const DashboardPage: FC = () => {
       setActiveLayout({
         rowDims: template.rowDimensions || [],
         colDims: template.colDimensions || [],
-        measures: template.measures || ['amount']
+        filterDims: [],          // <-- ADDED THIS to satisfy TypeScript!
+        measures: template.measures || ['amount'],
+        dimensionSettings: {}    // <-- ADDED THIS to satisfy TypeScript!
       });
     }
   };
@@ -540,12 +544,18 @@ const DashboardPage: FC = () => {
         </div>
       )}
       {/* RESTORED: Configuration Drawer */}
-      <ConfigurationDrawer 
+{/* RESTORED: Configuration Drawer */}
+<ConfigurationDrawer 
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         onCancel={() => {
-          // Revert draft state back to live state on cancel
-          dragDropState.applyLayout(activeLayout.rowDims, activeLayout.colDims, activeLayout.measures);
+          // Revert draft state back to live state on cancel (Notice we added the 4th parameter for settings!)
+          dragDropState.applyLayout(
+            activeLayout.rowDims, 
+            activeLayout.colDims, 
+            activeLayout.measures, 
+            activeLayout.dimensionSettings
+          );
           setIsDrawerOpen(false);
         }}
         onApply={() => {
@@ -553,20 +563,16 @@ const DashboardPage: FC = () => {
           setActiveLayout({
             rowDims: dragDropState.rowDims,
             colDims: dragDropState.colDims,
-            measures: dragDropState.measures
+            filterDims: dragDropState.filterDims,           // <-- NEW!
+            measures: dragDropState.measures,
+            dimensionSettings: dragDropState.dimensionSettings // <-- NEW!
           });
           setIsDrawerOpen(false);
         }}
         dragDropState={dragDropState}
         availableDimensions={availableDimensions}
-        availableMeasures={AVAILABLE_MEASURES}
         resolveDim={resolveDim}
         resolveMeasure={resolveMeasure}
-        onMeasureSettingsClick={(id) => { 
-          // You may need to uncomment setActiveSettingsMeasure if it complains!
-          setActiveSettingsMeasure(id); 
-          setIsSettingsModalOpen(true); 
-        }}
       />
     </div>
   );
