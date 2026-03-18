@@ -1,20 +1,47 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: hsl(210 40% 98%);
-  --color-foreground: hsl(222 47% 11%);
-  
-  --color-primary: hsl(221 83% 53%);
-  --color-primary-foreground: hsl(210 40% 98%);
-  
+  /* --- COLORS --- */
+  --color-background: hsl(0 0% 100%);
+  --color-foreground: hsl(210 11% 15%);
+  --color-primary: hsl(210 78% 46%); 
+  --color-primary-foreground: hsl(0 0% 100%);
   --color-surface: hsl(0 0% 100%);
-  --color-surface-foreground: hsl(222 47% 11%);
-  
-  --color-border: hsl(214 32% 91%);
-  
+  --color-surface-foreground: hsl(210 11% 15%);
+  --color-muted: hsl(206 30% 95%);
+  --color-muted-foreground: hsl(210 11% 15%);
+  --color-border: hsl(210 50% 85%);
   --color-destructive: hsl(0 84% 60%);
-  --color-destructive-foreground: hsl(210 40% 98%);
-  
+  --color-destructive-foreground: hsl(0 0% 100%);
+
+  /* --- TYPOGRAPHY (Adjust text sizes here) --- */
+  /* Scale: 0.75rem = 12px, 0.875rem = 14px, 1rem = 16px */
+  --font-size-xs: 0.75rem;    /* Metadata, helper text */
+  --font-size-sm: 0.875rem;   /* Sidebar labels, Table data */
+  --font-size-base: 1rem;     /* Default body text */
+  --font-size-lg: 1.125rem;   /* Small headers */
+  --font-size-xl: 1.25rem;    /* Sidebar Title, Modals */
+  --font-size-2xl: 1.5rem;    /* Dashboard KPI numbers */
+
+  /* --- FONT WEIGHTS --- */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* --- SPACING (Tight scale for dense financial data) --- */
+  --spacing-1: 0.25rem;  /* 4px */
+  --spacing-2: 0.5rem;   /* 8px */
+  --spacing-3: 0.75rem;  /* 12px */
+  --spacing-4: 1rem;     /* 16px */
+  --spacing-6: 1.5rem;   /* 24px */
+  --spacing-8: 2rem;     /* 32px */
+
+  /* --- SHADOWS (For AdjustmentPopovers and Modals) --- */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+
+  /* --- RADII --- */
   --radius: 0.5rem;
 }
 
@@ -22,6 +49,9 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    /* Inter is standard for SaaS, fallback to system sans */
+    font-family: 'Inter', Arial, Helvetica, sans-serif; 
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
   }
 }

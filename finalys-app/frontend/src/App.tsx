@@ -21,9 +21,10 @@ const App: FC = () => {
           <Route path="/" element={<AppLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="datasets" element={<PlaceholderPage title="Datasets (Versions)" />} />
-            <Route path="simulations" element={<PlaceholderPage title="Simulations" />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="datasets" element={<PlaceholderPage title="Datasets" />} />
+            <Route path="dimensions" element={<PlaceholderPage title="Dimensions" />} />
+            <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+            <Route path="*" element={<Navigate to="/home" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>

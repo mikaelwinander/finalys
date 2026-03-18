@@ -2,22 +2,21 @@
 import type { FC } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
+import { Header } from './Header';
 
 const AppLayout: FC = () => {
   return (
-    <div className="flex h-screen w-full bg-background overflow-hidden text-foreground">
-      {/* Fixed Sidebar */}
-      <Sidebar />
+    <div className="flex flex-col h-screen w-full bg-background overflow-hidden text-foreground">
+      {/* Top Header Bar spans full width */}
+      <Header />
       
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full relative overflow-y-auto">
-        {/* Optional: Top Header Bar could go here */}
-        <header className="h-16 bg-surface/50 backdrop-blur-sm border-b border-border flex items-center px-8 sticky top-0 z-10">
-          <h1 className="text-sm font-medium text-surface-foreground/80">SaaS Analytics Workspace</h1>
-        </header>
+      {/* Bottom Content Area: Sidebar + Main Content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Fixed Sidebar below Header */}
+        <Sidebar />
         
         {/* Dynamic Page Content */}
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-8 overflow-y-auto relative">
           <Outlet />
         </main>
       </div>
