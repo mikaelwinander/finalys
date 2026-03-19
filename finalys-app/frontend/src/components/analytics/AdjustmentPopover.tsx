@@ -1,3 +1,4 @@
+//finalys-app/frontend/src/components/analytics/AdjustmentPopover.tsx
 import React, { useState } from 'react';
 import { simulationService } from '../../services/simulationService';
 

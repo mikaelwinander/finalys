@@ -6,6 +6,12 @@
   --color-foreground: hsl(210 11% 15%);
   --color-primary: hsl(210 78% 46%); 
   --color-primary-foreground: hsl(0 0% 100%);
+  
+  /* --- INTERACTIVE NUANCES (Blue tinted) --- */
+  --color-interactive: hsl(210 78% 46%);        /* Base blue for clickable text/icons */
+  --color-interactive-hover: hsl(210 78% 36%);  /* Darker blue for hover states */
+  --color-interactive-muted: hsl(210 85% 90%);  /* Very light blue for subtle sidebar/button hover backgrounds */
+  
   --color-surface: hsl(0 0% 100%);
   --color-surface-foreground: hsl(210 11% 15%);
   --color-muted: hsl(206 30% 95%);
@@ -14,14 +20,15 @@
   --color-destructive: hsl(0 84% 60%);
   --color-destructive-foreground: hsl(0 0% 100%);
 
-  /* --- TYPOGRAPHY (Adjust text sizes here) --- */
+  /* --- TYPOGRAPHY --- */
   /* Scale: 0.75rem = 12px, 0.875rem = 14px, 1rem = 16px */
   --font-size-xs: 0.75rem;    /* Metadata, helper text */
   --font-size-sm: 0.875rem;   /* Sidebar labels, Table data */
   --font-size-base: 1rem;     /* Default body text */
   --font-size-lg: 1.125rem;   /* Small headers */
   --font-size-xl: 1.25rem;    /* Sidebar Title, Modals */
-  --font-size-2xl: 1.5rem;    /* Dashboard KPI numbers */
+  --font-size-2xl: 1.5rem;    /* Dashboard KPI numbers, App subtitle */
+  --font-size-4xl: 2.0rem;    /* App title */
 
   /* --- FONT WEIGHTS --- */
   --font-weight-normal: 400;
@@ -37,7 +44,7 @@
   --spacing-6: 1.5rem;   /* 24px */
   --spacing-8: 2rem;     /* 32px */
 
-  /* --- SHADOWS (For AdjustmentPopovers and Modals) --- */
+  /* --- SHADOWS --- */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 
@@ -53,5 +60,23 @@
     font-family: 'Inter', Arial, Helvetica, sans-serif; 
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
+  }
+
+  /* Globally apply blue nuance to generic text links */
+  a {
+    color: var(--color-interactive);
+    transition: color 0.15s ease-in-out;
+  }
+  
+  a:hover {
+    color: var(--color-interactive-hover);
+  }
+
+  /* Ensure keyboard navigation always shows a blue focus ring for accessibility */
+  button:focus-visible, 
+  a:focus-visible, 
+  [role="button"]:focus-visible {
+    outline: 2px solid var(--color-interactive);
+    outline-offset: 2px;
   }
 }

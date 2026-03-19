@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import type { FC } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Icon, type IconName } from '../common/Icon'; // Adhering to centralized Icon rule
+import { Icon, type IconName } from '../common/Icon';
+import { Button } from '../common/Button';
 
 interface NavItem {
   name: string;
@@ -21,52 +22,57 @@ export const Sidebar: FC = () => {
   ];
 
   return (
-    <aside className={`bg-surface border-r border-border h-full flex flex-col transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
-      <nav className="flex-1 px-3 py-6 space-y-1">
-      {navItems.map((item) => (
-        <NavLink
-          key={item.name}
-          to={item.path}
-          className={({ isActive }) => `
-            flex items-center rounded-md transition-all duration-200
+    <aside 
+      className={`bg-surface border-r border-border h-full flex flex-col transition-all duration-300 ${
+        isCollapsed ? 'w-20' : 'w-64'
+      }`}
+    >
+      {/* Top spacing applied directly to the nav to maintain consistent gap whether collapsed or not */}
+      <nav className="flex-1 px-3 pt-8 space-y-2">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.name}
+            to={item.path}
+            className={({ isActive }) => `
+              flex items-center rounded-md transition-all duration-200
+              /* Increased height for better target area and visibility */
+              h-12 px-4 
+              ${isCollapsed ? 'justify-center' : 'justify-start'}
+              
+              /* Interactive Nuance: Enforcing the blue-tinted theme tokens */
+              ${isActive 
+                ? 'bg-interactive-muted text-interactive font-semibold ring-1 ring-interactive/20' 
+                : 'text-interactive hover:bg-interactive-muted hover:text-interactive-hover'}
+            `}
+          >
+            <Icon 
+              name={item.icon} 
+              size={22} 
+              className="shrink-0" 
+            />
             
-            /* FIX 1: Set a consistent height and horizontal padding */
-            h-11 px-3 
-            
-            /* FIX 2: Only change justification, not vertical padding */
-            ${isCollapsed ? 'justify-center' : 'justify-start'}
-            
-            ${isActive 
-              ? 'bg-primary/10 text-primary' 
-              : 'text-foreground/70 bg-transparent'}
-            
-            hover:bg-muted 
-          `}
-        >
-          {/* FIX 3: Keep icon size consistent or ensure it fits within h-11 */}
-          <Icon 
-            name={item.icon} 
-            size={24} 
-            className="shrink-0" 
-          />
-          
-          {!isCollapsed && (
-            <span className="ml-3 truncate text-xl font-medium tracking-tight">
-              {item.name}
-            </span>
-          )}
-        </NavLink>
-      ))}
+            {!isCollapsed && (
+              <span className="ml-3 truncate text-2xl font-medium">
+                {item.name}
+              </span>
+            )}
+          </NavLink>
+        ))}
       </nav>
 
-      {/* Collapse Toggle with hover/active states */}
-      <div className="h-14 flex items-center justify-end px-4 border-t border-border">
-        <button
+      {/* Collapse Toggle using Centralized Button Primitive */}
+      <div className="p-3 border-t border-border">
+        <Button
+          variant="ghost"
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-2 rounded-md text-foreground/50 hover:bg-muted hover:text-foreground active:bg-border transition-colors"
+          className="w-full justify-center text-interactive hover:bg-interactive-muted"
         >
-          <Icon name={isCollapsed ? 'chevronRight' : 'chevronLeft'} size={18} />
-        </button>
+          <Icon 
+            name={isCollapsed ? 'chevronRight' : 'chevronLeft'} 
+            size={20} 
+          />
+          {!isCollapsed && <span className="ml-2 text-sm">Collapse View</span>}
+        </Button>
       </div>
     </aside>
   );

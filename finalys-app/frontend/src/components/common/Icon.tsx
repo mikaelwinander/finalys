@@ -57,6 +57,7 @@ const ICON_MAP = {
   settings: Settings,
   home: Home,
   profile: User,
+  user: User, // Added mapping for the Header.tsx component
   logout: LogOut,
   notifications: Bell,
   search: Search,

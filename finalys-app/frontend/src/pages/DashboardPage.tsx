@@ -378,7 +378,6 @@ const DashboardPage: FC = () => {
 
           <div className="flex items-center gap-4">
 
-            {/* 1. Load Template Dropdown */}
             {/* 1. Load Template Dropdown & Management Icons */}
             <div className="flex items-center gap-2 pr-4 border-r border-gray-300">
               <span className="text-sm font-medium text-gray-700 whitespace-nowrap">View:</span>
