@@ -387,7 +387,7 @@ const DashboardPage: FC = () => {
   // 4. RENDER PREPARATION
   // ---------------------------------------------------------------------------
   const activeTemplate = templates.find(t => t.id === selectedTemplateId);
-  const currentViewName = activeTemplate ? activeTemplate.name : 'Custom Layout';
+  const currentViewName = activeTemplate ? 'View: '+activeTemplate.name : 'View: '+'Custom Layout';
 
   // The dropdown content mapping
   // ---------------------------------------------------------------------------
@@ -442,8 +442,8 @@ const DashboardPage: FC = () => {
 
   return (
     <PageContainer 
-      title="Views" 
-      description={currentViewName}
+      //title="Views" 
+      title={currentViewName}
     >
       <div className="flex flex-col h-full space-y-6">
         
