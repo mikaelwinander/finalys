@@ -10,22 +10,53 @@ interface PopoverProps {
   align?: 'left' | 'right' | 'center';
   /** Optional extra classes for the popover container */
   className?: string;
+  /** Optional: If provided, the popover becomes a controlled component */
+  isOpen?: boolean;
+  /** Optional: Callback fired when the popover requests to open or close */
+  onOpenChange?: (open: boolean) => void;
 }
 
 export const Popover: FC<PopoverProps> = ({ 
   trigger, 
   content, 
   align = 'right',
-  className = '' 
+  className = '',
+  isOpen: controlledIsOpen,
+  onOpenChange
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  // 1. Internal state for fallback (uncontrolled usage)
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+
+  // 2. Determine if the parent is controlling the state
+  const isControlled = controlledIsOpen !== undefined;
+  const isOpen = isControlled ? controlledIsOpen : internalIsOpen;
+
+  // 3. Handlers that respect both controlled and uncontrolled patterns
+  const handleToggle = () => {
+    const nextState = !isOpen;
+    if (!isControlled) {
+      setInternalIsOpen(nextState);
+    }
+    if (onOpenChange) {
+      onOpenChange(nextState);
+    }
+  };
+
+  const handleClose = () => {
+    if (!isControlled) {
+      setInternalIsOpen(false);
+    }
+    if (onOpenChange) {
+      onOpenChange(false);
+    }
+  };
 
   // Handle click outside to close
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+        handleClose();
       }
     };
 
@@ -35,7 +66,7 @@ export const Popover: FC<PopoverProps> = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen]);
+  }, [isOpen, isControlled, onOpenChange]);
 
   const alignmentClasses = {
     left: 'left-0',
@@ -46,7 +77,7 @@ export const Popover: FC<PopoverProps> = ({
   return (
     <div className="relative inline-block" ref={popoverRef}>
       {/* Trigger Area */}
-      <div onClick={() => setIsOpen(!isOpen)} className="cursor-pointer">
+      <div onClick={handleToggle} className="cursor-pointer">
         {trigger}
       </div>
 

@@ -3,8 +3,9 @@ import type { FC } from 'react';
 import { Icon } from '../common/Icon';
 import { Button } from '../common/Button';
 import { Popover } from '../common/Popover';
+import logoPng from '../../assets/AI-powered financial logo designs.png';
 
-// Strictly type the new props
+
 interface HeaderProps {
   isSidebarCollapsed: boolean;
 }
@@ -40,9 +41,11 @@ export const Header: FC<HeaderProps> = ({ isSidebarCollapsed }) => {
       
       {/* 1. Left Section: Dynamically adjusts width with a smooth transition */}
       <div className={`flex items-center justify-center h-full border-r border-border shrink-0 transition-all duration-300 ease-in-out ${leftSectionWidth}`}>
-        <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-lg font-bold mb-[4px]">
-          F
-        </div>
+        <img 
+          src={logoPng} 
+          alt="Finalys Logo" 
+          className="w-20 h-20 object-contain px-1" 
+        />
       </div>
 
       {/* 2. Middle Section: Shifts horizontally as the left section resizes */}

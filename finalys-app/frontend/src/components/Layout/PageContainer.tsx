@@ -20,24 +20,21 @@ export const PageContainer: FC<PageContainerProps> = ({
 }) => {
   return (
     <div className="flex flex-col h-full w-full text-left">
-      
-      {/* Page Header Area */}
       <div className="mb-6 shrink-0">
-        <h2 className={titleClassName || 'text-2xl font-bold text-foreground tracking-tight'}>
+        {/* text-2xl is now permanently locked. titleClassName can only add extra rules. */}
+        <h2 className={`text-2xl font-bold text-foreground tracking-tight ${titleClassName || ''}`}>
           {title}
         </h2>
+          {/* text-base is permanently locked. descriptionClassName can only add extra rules. */}        
         {description && (
-          <div className={descriptionClassName || 'text-sm text-muted-foreground mt-1'}>
+          <div className={`text-xl text-muted-foreground mt-1 ${descriptionClassName || ''}`}>
             {description}
           </div>
         )}
       </div>
-
-      {/* Page Content Area */}
       <div className="flex-1 min-h-0 w-full">
         {children}
       </div>
-      
     </div>
   );
 };

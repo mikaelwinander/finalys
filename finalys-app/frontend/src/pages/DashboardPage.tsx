@@ -26,6 +26,9 @@ const FALLBACK_DIMENSIONS = [
 ];
 
 const DashboardPage: FC = () => {
+  // ---------------------------------------------------------------------------
+  // 1. ALL HOOKS MUST LIVE HERE AT THE TOP (Before any early returns)
+  // ---------------------------------------------------------------------------
   const hasAppliedDefault = useRef(false);
   const { token, isLoading: isAuthLoading } = useAuth();
   const [availableDatasets, setAvailableDatasets] = useState<string[]>([]);
@@ -48,13 +51,23 @@ const DashboardPage: FC = () => {
   const [datasetLayout, setDatasetLayout] = useState<'col' | 'row'>('col');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSettingsMeasure] = useState<string | null>(null);
-
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   
   // Template State
   const [templates, setTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  
+  // Staged View Selection State (Safely at the top!)
+  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
+  const [stagedTemplateId, setStagedTemplateId] = useState<string | null>(null);
 
+  const [selectedCell, setSelectedCell] = useState<{ value: number; coordinates: Record<string, string>; datasetId: string; } | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // 2. EFFECTS AND CALLBACKS
+  // ---------------------------------------------------------------------------
   const fetchTemplates = useCallback(async (isInitialLoad = false) => {
     if (!token) return;
     try {
@@ -64,10 +77,14 @@ const DashboardPage: FC = () => {
       
       if (res.ok) {
         const json = await res.json();
-        const fetchedTemplates = json.data || [];
+        
+        // 🚨 CRITICAL FIX: Parse the payload if the backend returned a string
+        const fetchedTemplates = typeof json.data === 'string' 
+          ? JSON.parse(json.data) 
+          : (json.data || []);
+          
         setTemplates(fetchedTemplates);
 
-        // 3. Use the ref guard safely inside the closure
         if (isInitialLoad && !hasAppliedDefault.current) {
           const defaultTemplate = fetchedTemplates.find((t: any) => t.isDefault);
           if (defaultTemplate && dragDropState.applyLayout) {
@@ -77,7 +94,7 @@ const DashboardPage: FC = () => {
               defaultTemplate.colDimensions,
               defaultTemplate.measures
             );
-            hasAppliedDefault.current = true; // Lock future applications
+            hasAppliedDefault.current = true; 
           }
         }
       }
@@ -233,14 +250,9 @@ const DashboardPage: FC = () => {
     }
   };
 
-  const [selectedCell, setSelectedCell] = useState<{ value: number; coordinates: Record<string, string>; datasetId: string; } | null>(null);
-  
   const toggleDataset = (ds: string) => {
     setDatasetIds(prev => prev.includes(ds) ? prev.filter(id => id !== ds) : [...prev, ds]);
   };
-
-  const [history, setHistory] = useState<any[]>([]);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -341,7 +353,9 @@ const DashboardPage: FC = () => {
   const resolveDim = (id: string) => availableDimensions.find(d => d.id === id) || { id, label: id };
   const resolveMeasure = (id: string) => AVAILABLE_MEASURES.find(m => m.id === id) || { id, label: id };
 
-  // Centralized Loading State
+// ---------------------------------------------------------------------------
+  // 3. EARLY RETURNS (Must happen AFTER all hooks are declared)
+  // ---------------------------------------------------------------------------
   if (workspaceStatus === 'loading' || isAuthLoading) {
     return (
       <div className="flex justify-center items-center h-full">
@@ -350,147 +364,185 @@ const DashboardPage: FC = () => {
     );
   }
 
-// 2. Determine the active view name
-  
-const activeTemplate = templates.find(t => t.id === selectedTemplateId);
-const currentViewName = activeTemplate ? activeTemplate.name : 'Custom Layout';
-
-const ViewMenuContent = (
-  <div className="flex flex-col w-48 py-1">
-    <div className="px-3 py-2 text-xs font-semibold text-muted-foreground border-b border-border uppercase tracking-wider">
-      Select View
-    </div>
-    <button
-      onClick={() => handleApplyTemplate('')}
-      className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-        selectedTemplateId === '' 
-          ? 'bg-interactive-muted text-interactive font-medium' 
-          : 'text-foreground hover:bg-muted'
-      }`}
-    >
-      Custom Layout
-    </button>
-    {templates.map(t => (
-      <button
-        key={t.id}
-        onClick={() => handleApplyTemplate(t.id)}
-        className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-          selectedTemplateId === t.id 
-            ? 'bg-interactive-muted text-interactive font-medium' 
-            : 'text-foreground hover:bg-muted'
-        }`}
-      >
-        {t.name}
-      </button>
-    ))}
-  </div>
-);
-
-// Replaces IntegratedTitle with a Description component
-const ViewSelectorDescription = (
-  <div className="flex items-center gap-2 text-muted-foreground">
-    <span>View:</span>
-    <Popover 
-      trigger={
-        <button className="flex items-center gap-1 px-2 py-1 -ml-2 rounded-md text-interactive hover:bg-interactive-muted transition-colors font-medium">
-          {currentViewName}
-          <Icon name="chevronDown" size={16} />
-        </button>
-      }
-      content={ViewMenuContent}
-      align="left"
-    />
-    {/* Optional: We can keep the dataset count as secondary info separated by a dot */}
-    {/*
-        <span className="px-2">&bull;</span>
-        <span>Comparing {datasetIds.length} dataset(s)</span>
-    */}
-  </div>
-);
-
-return (
-  <PageContainer 
-    title="Financial Overview" 
-    description={ViewSelectorDescription}
-    // We pass the full string here to combine the flex alignment with the standard typography
-    descriptionClassName="flex items-center text-sm text-muted-foreground mt-1" 
-    >
-    <div className="flex flex-col h-full space-y-6">
-      
-      {/* Unified Action Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border">
-        
-        <div className="flex items-center gap-4">
-          {/* Template Actions (View dropdown is now in the description above) */}
-          <div className="flex items-center gap-1 pr-4 border-r border-border">
-            <Button variant="ghost" size="sm" onClick={handleSaveAsNewTemplate} title="Save as New Template" className="px-2 text-interactive hover:text-interactive-hover hover:bg-interactive-muted">
-              <Icon name="add" size={16} />
-            </Button>
-
-            {selectedTemplateId && (
-              <>
-                <Button variant="ghost" size="sm" onClick={handleUpdateTemplate} title="Overwrite Template Layout" className="px-2 text-interactive hover:text-interactive-hover hover:bg-interactive-muted">
-                  <Icon name="save" size={16} />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={handleRenameTemplate} title="Rename Template" className="px-2 text-interactive hover:text-interactive-hover hover:bg-interactive-muted">
-                  <Icon name="edit" size={16} />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={handleDeleteTemplate} title="Delete Template" className="px-2 text-destructive hover:text-destructive hover:bg-destructive/10">
-                  <Icon name="trash" size={16} />
-                </Button>
-              </>
-            )}
-          </div>
-
-          {/* Adjustments Toggle */}
-          <div className="flex items-center gap-2 pr-4 border-r border-border">
-            <span className="text-sm font-medium text-foreground">
-              Include Adjustments
-            </span>
-            <button
-              type="button"
-              onClick={() => setIncludeAdjustments(!includeAdjustments)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-interactive focus-visible:ring-offset-2 ${
-                includeAdjustments ? 'bg-primary' : 'bg-muted'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow ring-0 transition duration-200 ease-in-out ${
-                  includeAdjustments ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* Values Configuration Button */}
-          <Button 
-            variant="outline" 
-            onClick={() => setIsSettingsModalOpen(true)}
-          >
-            <Icon name="settings" size={16} className="mr-2" />
-            Values
-          </Button>
-
-          {/* Layout Configuration Button */}
-          <Button 
-            variant="outline" 
-            onClick={() => {
-              dragDropState.applyLayout(activeLayout.rowDims, activeLayout.colDims, activeLayout.measures);
-              setIsDrawerOpen(true);
-            }}
-          >
-            <Icon name="table" size={16} className="mr-2" />
-            Layout
+  // 🚨 ADD THIS: Graceful fallback for API Timeouts/Failures
+  if (workspaceStatus === 'api_error') {
+    return (
+      <PageContainer title="System Error" description="Connection Timeout">
+        <div className="flex flex-col items-center justify-center h-64 mt-8 p-8 border border-dashed border-destructive bg-destructive/5 rounded-lg text-center">
+          <h3 className="text-lg font-bold text-destructive mb-2">Backend API Unreachable</h3>
+          <p className="text-sm text-muted-foreground max-w-md mb-6">
+            The dashboard failed to load because the API took too long to respond (504 Gateway Timeout). 
+            Please verify that your Node.js backend server is actively running in your terminal.
+          </p>
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            <Icon name="refresh" size={16} className="mr-2" />
+            Retry Connection
           </Button>
         </div>
+      </PageContainer>
+    );
+  }
 
-        {/* Refresh Button */}
-        <Button variant="primary" onClick={refetch}>
-          <Icon name="refresh" size={16} className="mr-2" />
-          Refresh Data
-        </Button>
+  // ---------------------------------------------------------------------------
+  // 4. RENDER PREPARATION
+  // ---------------------------------------------------------------------------
+  const activeTemplate = templates.find(t => t.id === selectedTemplateId);
+  const currentViewName = activeTemplate ? activeTemplate.name : 'Custom Layout';
 
+  // The dropdown content mapping
+  // ---------------------------------------------------------------------------
+  // 4. RENDER PREPARATION
+  // ---------------------------------------------------------------------------
+  // 🚨 CRITICAL FIX: Guarantee we are working with an array before rendering
+  const safeTemplates = Array.isArray(templates) ? templates : [];
+  
+  // The dropdown content mapping
+  const ViewMenuContent = (
+    <div className="flex flex-col w-48 py-1">
+      <div className="px-3 py-2 text-xs font-semibold text-muted-foreground border-b border-border uppercase tracking-wider">
+        Select View
       </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          // Apply immediately and close the menu
+          handleApplyTemplate('');
+          setIsViewMenuOpen(false);
+        }}
+        className={`w-full justify-start px-3 py-2 text-sm transition-colors ${
+          selectedTemplateId === '' 
+            ? 'bg-interactive-muted text-interactive font-medium' 
+            : 'text-interactive hover:bg-interactive-muted hover:text-interactive-hover'
+        }`}
+      >
+        Custom Layout
+      </Button>
+      {safeTemplates.map(t => (
+        <Button
+          key={t.id}
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            // Apply immediately and close the menu
+            handleApplyTemplate(t.id);
+            setIsViewMenuOpen(false);
+          }}
+          className={`w-full justify-start px-3 py-2 text-sm transition-colors ${
+            selectedTemplateId === t.id 
+              ? 'bg-interactive-muted text-interactive font-medium' 
+              : 'text-interactive hover:bg-interactive-muted hover:text-interactive-hover'
+          }`}
+        >
+          {t.name}
+        </Button>
+      ))}
+    </div>
+  );
+
+  return (
+    <PageContainer 
+      title="Views" 
+      description={currentViewName}
+    >
+      <div className="flex flex-col h-full space-y-6">
+        
+        {/* Unified Action Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border">
+          
+          <div className="flex items-center gap-4">
+            
+            {/* Template Actions and View Selector grouped together */}
+            <div className="flex items-center gap-2 pr-4 border-r border-border">
+              
+              <Popover 
+                isOpen={isViewMenuOpen}
+                // Now onOpenChange only needs to manage the visibility state
+                onOpenChange={setIsViewMenuOpen}
+                trigger={
+                  <Button 
+                    variant="primary" 
+                    size="sm"
+                    className="flex items-center justify-center px-2 mr-1"
+                    title="Select View"
+                  >
+                    <Icon name="chevronDown" size={16} />
+                  </Button>
+                }
+                content={ViewMenuContent}
+                align="left"
+              />
+
+              <Button variant="ghost" size="sm" onClick={handleSaveAsNewTemplate} title="Save as New Template" className="px-2 text-interactive hover:text-interactive-hover hover:bg-interactive-muted">
+                <Icon name="add" size={16} />
+              </Button>
+
+              {selectedTemplateId && (
+                <>
+                  <Button variant="ghost" size="sm" onClick={handleUpdateTemplate} title="Overwrite Template Layout" className="px-2 text-interactive hover:text-interactive-hover hover:bg-interactive-muted">
+                    <Icon name="save" size={16} />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleRenameTemplate} title="Rename Template" className="px-2 text-interactive hover:text-interactive-hover hover:bg-interactive-muted">
+                    <Icon name="edit" size={16} />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleDeleteTemplate} title="Delete Template" className="px-2 text-destructive hover:text-destructive hover:bg-destructive/10">
+                    <Icon name="trash" size={16} />
+                  </Button>
+                </>
+              )}
+            </div>
+
+            {/* Adjustments Toggle */}
+            <div className="flex items-center gap-2 pr-4 border-r border-border">
+              <span className="text-sm font-medium text-foreground">
+                Include Adjustments
+              </span>
+              <button
+                type="button"
+                onClick={() => setIncludeAdjustments(!includeAdjustments)}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-interactive focus-visible:ring-offset-2 ${
+                  includeAdjustments ? 'bg-primary' : 'bg-muted'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow ring-0 transition duration-200 ease-in-out ${
+                    includeAdjustments ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Values Configuration Button */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setIsSettingsModalOpen(true)}
+            >
+              <Icon name="settings" size={16} className="mr-2" />
+              Values
+            </Button>
+
+            {/* Layout Configuration Button */}
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                dragDropState.applyLayout(activeLayout.rowDims, activeLayout.colDims, activeLayout.measures);
+                setIsDrawerOpen(true);
+              }}
+            >
+              <Icon name="table" size={16} className="mr-2" />
+              Layout
+            </Button>
+          </div>
+
+          {/* Refresh Button */}
+          <Button variant="primary" size="sm" onClick={refetch}>
+            <Icon name="refresh" size={16} className="mr-2" />
+            Refresh Data
+          </Button>
+
+        </div>
 
         {/* Matrix Area */}
         <div className="flex-1 flex flex-col min-w-0 space-y-4">

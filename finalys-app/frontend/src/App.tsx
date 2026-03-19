@@ -6,7 +6,6 @@ import { AuthProvider } from './hooks/useAuth';
 // Layout & Pages
 import AppLayout from './components/Layout/AppLayout';
 import DashboardPage from './pages/DashboardPage';
-// 1. Import your newly created pages here
 import { DatasetsPage } from './pages/DatasetsPage';
 import { DimensionsPage } from './pages/DimensionsPage';
 import { SettingsPage } from './pages/SettingsPage';
