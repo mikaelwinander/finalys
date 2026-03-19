@@ -1,28 +1,31 @@
 // /frontend/src/components/Layout/AppLayout.tsx
+import { useState } from 'react';
 import type { FC } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
 const AppLayout: FC = () => {
+  // Lift the sidebar state up so both the Header and Sidebar can react to it
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Handler to toggle the state (you'll pass this to the Sidebar's toggle button)
+  const toggleSidebar = () => setIsSidebarCollapsed((prev) => !prev);
+
   return (
-    <div className="h-screen w-screen flex overflow-hidden bg-background text-foreground">
-      {/* Left Pillar: Sidebar Navigation
-        It handles its own width transitions internally. 
-      */}
-      <Sidebar />
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
+      {/* Pass the state to the Header so it can adjust its internal widths */}
+      <Header isSidebarCollapsed={isSidebarCollapsed} />
 
-      {/* Right Pillar: Main Application Area
-        Uses flex-1 to fill remaining space and min-w-0 to prevent flexbox blowout. 
-      */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         
-        {/* Top Navigation */}
-        <Header />
+        {/* Pass the state and toggle function to the Sidebar */}
+        <Sidebar 
+          isCollapsed={isSidebarCollapsed} 
+          onToggle={toggleSidebar} 
+        />
 
-        {/* Dynamic Page Content */}
         <main className="flex-1 overflow-y-auto bg-background p-6">
-          {/* Removed 'mx-auto' so it aligns left instead of centering on large screens */}
           <div className="max-w-[1600px] h-full">
             <Outlet />
           </div>

@@ -4,8 +4,12 @@ import { Icon } from '../common/Icon';
 import { Button } from '../common/Button';
 import { Popover } from '../common/Popover';
 
-export const Header: FC = () => {
-  // Define the menu content adhering to Interactive Nuance standards
+// Strictly type the new props
+interface HeaderProps {
+  isSidebarCollapsed: boolean;
+}
+
+export const Header: FC<HeaderProps> = ({ isSidebarCollapsed }) => {
   const userMenuContent = (
     <div className="flex flex-col space-y-1">
       <div className="px-3 py-2 border-b border-border mb-1">
@@ -13,11 +17,11 @@ export const Header: FC = () => {
         <p className="text-xs text-foreground opacity-60">planner@finalys.com</p>
       </div>
       
-      <Button variant="ghost" className="w-full justify-start h-9 px-3">
+      <Button variant="ghost" className="w-full justify-start h-9 px-3 text-interactive hover:text-interactive-hover hover:bg-interactive-muted">
         <Icon name="profile" size={16} className="mr-2" />
         Profile
       </Button>
-      <Button variant="ghost" className="w-full justify-start h-9 px-3">
+      <Button variant="ghost" className="w-full justify-start h-9 px-3 text-interactive hover:text-interactive-hover hover:bg-interactive-muted">
         <Icon name="settings" size={16} className="mr-2" />
         Settings
       </Button>
@@ -28,13 +32,21 @@ export const Header: FC = () => {
     </div>
   );
 
+  // Dynamic width class based on sidebar state (matches standard Tailwind sizes)
+  const leftSectionWidth = isSidebarCollapsed ? 'w-16' : 'w-64';
+
   return (
-    <header className="h-16 bg-muted border-b border-border flex items-center px-6 shrink-0 justify-between z-20">
+    <header className="flex items-center w-full h-16 bg-muted border-b border-border z-20 shrink-0">
       
-      <div className="flex items-end gap-3">
-        <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-lg font-bold shrink-0 mb-[4px]">
+      {/* 1. Left Section: Dynamically adjusts width with a smooth transition */}
+      <div className={`flex items-center justify-center h-full border-r border-border shrink-0 transition-all duration-300 ease-in-out ${leftSectionWidth}`}>
+        <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center text-primary-foreground text-lg font-bold mb-[4px]">
           F
         </div>
+      </div>
+
+      {/* 2. Middle Section: Shifts horizontally as the left section resizes */}
+      <div className="flex flex-1 items-end gap-3 px-6 transition-all duration-300 ease-in-out">
         <h1 className="text-4xl font-bold text-primary leading-none uppercase tracking-tight">
           FINALYS
         </h1>
@@ -43,8 +55,8 @@ export const Header: FC = () => {
         </span>
       </div>
 
-      {/* Wrapping the interactive Button in our new Popover */}
-      <div className="flex items-center gap-2 text-sm font-medium">
+      {/* 3. Right Section: Remains pinned */}
+      <div className="flex items-center px-6 shrink-0 gap-2 text-sm font-medium">
         <Popover 
           align="right"
           trigger={
@@ -59,6 +71,7 @@ export const Header: FC = () => {
           content={userMenuContent}
         />
       </div>
+
     </header>
   );
 };
