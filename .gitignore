@@ -7,18 +7,62 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# dotenv environment variables file
+.env
+.env.test
+.env.production
+.env.local
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Vite build output
+dist/
+dist-ssr/
+
+# Mac/Windows OS files
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+Thumbs.db
+
+# Redis dumps
+dump.rdb
+
+# Firebase / IDE specific
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+
+# Temporary testing / local files
+.env.development.local
+.env.test.local
+.env.production.local
