@@ -28,7 +28,7 @@ export const Sidebar: FC = () => {
       }`}
     >
       {/* Top spacing applied directly to the nav to maintain consistent gap whether collapsed or not */}
-      <nav className="flex-1 px-3 pt-8 space-y-2">
+      <nav className="flex-1 px-3 pt-22 space-y-2">
         {navItems.map((item) => (
           <NavLink
             key={item.name}

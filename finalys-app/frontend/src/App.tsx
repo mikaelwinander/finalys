@@ -6,11 +6,10 @@ import { AuthProvider } from './hooks/useAuth';
 // Layout & Pages
 import AppLayout from './components/Layout/AppLayout';
 import DashboardPage from './pages/DashboardPage';
-
-// Placeholder pages to prevent routing errors
-const PlaceholderPage: FC<{ title: string }> = ({ title }) => (
-  <div className="p-4"><h1 className="text-2xl font-bold">{title}</h1></div>
-);
+// 1. Import your newly created pages here
+import { DatasetsPage } from './pages/DatasetsPage';
+import { DimensionsPage } from './pages/DimensionsPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 const App: FC = () => {
   return (
@@ -21,10 +20,14 @@ const App: FC = () => {
           <Route path="/" element={<AppLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="datasets" element={<PlaceholderPage title="Datasets" />} />
-            <Route path="dimensions" element={<PlaceholderPage title="Dimensions" />} />
-            <Route path="settings" element={<PlaceholderPage title="Settings" />} />
-            <Route path="*" element={<Navigate to="/home" replace />} />
+            
+            {/* 2. Swap out the Placeholders for the real components */}
+            <Route path="datasets" element={<DatasetsPage />} />
+            <Route path="dimensions" element={<DimensionsPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            
+            {/* Note: I changed the fallback from /home to /dashboard since /home doesn't exist */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>
