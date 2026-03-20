@@ -1,4 +1,3 @@
-// /frontend/src/services/pivotService.ts
 import type { PivotRequestParams, PivotDataResponse } from '../types/pivot.types';
 
 const API_BASE_URL = '/api';
@@ -6,7 +5,7 @@ const API_BASE_URL = '/api';
 export const pivotService = {
   async getPivotData(params: PivotRequestParams, token: string): Promise<PivotDataResponse> {
     const queryParams = new URLSearchParams({
-      datasetIds: JSON.stringify(params.datasetIds), // <-- CHANGED: Array stringified
+      datasetIds: JSON.stringify(params.datasetIds), 
       dimensions: JSON.stringify(params.dimensions),
       measures: JSON.stringify(params.measures),
       _t: Date.now().toString() // Cache buster forces a fresh request
@@ -54,15 +53,7 @@ export const pivotService = {
 
     const json = await response.json();
     
-    // Transform the array [{dim_id: 'dim01', dim_name: 'Konto'}] 
-    // into a dictionary: { 'dim01': 'Konto' }
-    const dictionary: Record<string, string> = {};
-    if (json.data && Array.isArray(json.data)) {
-      json.data.forEach((item: any) => {
-        dictionary[item.dim_id] = item.dim_name;
-      });
-    }
-    
-    return dictionary;
+    // Explicitly pull the flattened dictionary from the new payload
+    return json.dictionary || {};
   }
 };

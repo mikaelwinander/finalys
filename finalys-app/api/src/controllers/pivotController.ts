@@ -120,24 +120,28 @@ export const pivotController = {
   async getDimensionMapping(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const clientId = req.user!.clientId;
-      // Bumping to v4 to guarantee a cache bypass
-      const cacheKey = `dimensions_v4:${clientId}`; 
-      
-      const cachedMapping = await cacheService.get<any[]>(cacheKey);
-      if (cachedMapping) {
-        logger.info(`[CONTROLLER] Returning CACHED data for ${cacheKey}`);
-        res.status(200).json({ data: cachedMapping });
+      const cacheKey = `dimensions_v5:${clientId}`; // Bumped cache key
+
+      const cachedData = await cacheService.get<any>(cacheKey);
+      if (cachedData) {
+        res.status(200).json(cachedData);
         return;
       }
 
-      logger.info(`[CONTROLLER] Cache MISS for ${cacheKey}. Calling BigQuery Service...`);
-      const mapping = await bigqueryService.getDimensionMapping(clientId);
-      
-      await cacheService.set(cacheKey, mapping, 86400); 
-      res.status(200).json({ data: mapping });
+      // 1. Array for the UI Drawer (structural columns)
+      const mappingArray = await bigqueryService.getDimensionMapping(clientId);
+
+      // 2. Flat dictionary for resolving names in the Pivot Table
+      const dictionary = await bigqueryService.getFrontendDictionary(clientId);
+
+      // 3. Return both!
+      const payload = { data: mappingArray, dictionary: dictionary };
+
+      await cacheService.set(cacheKey, payload, 86400);
+      res.status(200).json(payload);
     } catch (error: any) {
-      logger.error('Failed to fetch dimension mapping', { error: error.message });
-      res.status(500).json({ error: error.message });
+      logger.error('Failed to fetch dimensions', { error: error.message });
+      res.status(500).json({ error: 'Failed to load dimension mappings' });
     }
   }
 };

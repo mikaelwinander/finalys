@@ -1,3 +1,4 @@
+//finalys-app/api/src/services/bigqueryService.ts
 import { BigQuery } from '@google-cloud/bigquery';
 import { sqlBuilder, PhysicalQueryRequest } from '../utils/sqlBuilder';
 import { logger } from '../utils/logger';
@@ -128,5 +129,53 @@ export const bigqueryService = {
     logger.info(`[SERVICE] DB returned ${rows.length} rows. Combined array has ${combinedArray.length} rows.`);
     
     return combinedArray;
+  },
+  /**
+   * Builds a flattened ID-to-Name dictionary for the frontend UI.
+   * Maps dimension IDs, dimension data member IDs, and Dataset IDs to their human-readable names.
+   */
+  /**
+   * Builds a flattened ID-to-Name dictionary for the frontend UI.
+   * Maps dimension IDs, dimension data member IDs, and Dataset IDs to their human-readable names.
+   */
+  async getFrontendDictionary(clientId: string): Promise<Record<string, string>> {
+    const dictionary: Record<string, string> = {
+      'period_id': 'Period',
+      'amount_type_id': 'Amount Type',
+      'amount': 'Amount',
+      'Variance': 'Variance'
+    };
+
+    // 1. Map Dimension Names (e.g., 'dim01' -> 'Cost Center')
+    try {
+      const dimQuery = `SELECT dim_id, dim_name FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.dimension_mapping\` WHERE client_id = @clientId`;
+      const [dimJob] = await bqClient.createQueryJob({ query: dimQuery, params: { clientId } });
+      const [dimRows] = await dimJob.getQueryResults();
+      dimRows.forEach(row => { if (row.dim_id) dictionary[row.dim_id] = row.dim_name; });
+    } catch (error: any) {
+      logger.warn('[getFrontendDictionary] Failed to load dimension_mapping', { error: error.message });
+    }
+
+    // 2. Map Dimension Members (e.g., 'CC-100' -> 'Marketing Dept')
+    try {
+      const dataQuery = `SELECT dim_data_id, dim_data_name FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.dimension_data\` WHERE client_id = @clientId`;
+      const [dataJob] = await bqClient.createQueryJob({ query: dataQuery, params: { clientId } });
+      const [dataRows] = await dataJob.getQueryResults();
+      dataRows.forEach(row => { if (row.dim_data_id) dictionary[row.dim_data_id] = row.dim_data_name; });
+    } catch (error: any) {
+      logger.warn('[getFrontendDictionary] Failed to load dimension_data', { error: error.message });
+    }
+
+    // 3. Map Datasets / Plan Versions (Updated to query 'datasets' table)
+    try {
+      const dsQuery = `SELECT dataset_id, dataset_name FROM \`snbx-efcpa-effectplan-vcdm.finalys_dataset.datasets\` WHERE client_id = @clientId`;
+      const [dsJob] = await bqClient.createQueryJob({ query: dsQuery, params: { clientId } });
+      const [dsRows] = await dsJob.getQueryResults();
+      dsRows.forEach(row => { if (row.dataset_id) dictionary[row.dataset_id] = row.dataset_name; });
+    } catch (error: any) {
+      logger.warn('[getFrontendDictionary] Failed to load datasets', { error: error.message });
+    }
+
+    return dictionary;
   }
 };

@@ -1,6 +1,6 @@
 // /frontend/src/App.tsx
 import { type FC } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 
 // Layout & Pages
@@ -10,26 +10,27 @@ import { DatasetsPage } from './pages/DatasetsPage';
 import { DimensionsPage } from './pages/DimensionsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
+// 1. Define the Data Router configuration array
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <Navigate to="/dashboard" replace /> },
+      { path: "dashboard", element: <DashboardPage /> },
+      { path: "datasets", element: <DatasetsPage /> },
+      { path: "dimensions", element: <DimensionsPage /> },
+      { path: "settings", element: <SettingsPage /> },
+      { path: "*", element: <Navigate to="/dashboard" replace /> }
+    ]
+  }
+]);
+
 const App: FC = () => {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* All routes live inside the AppLayout shell */}
-          <Route path="/" element={<AppLayout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
-            
-            {/* 2. Swap out the Placeholders for the real components */}
-            <Route path="datasets" element={<DatasetsPage />} />
-            <Route path="dimensions" element={<DimensionsPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            
-            {/* Note: I changed the fallback from /home to /dashboard since /home doesn't exist */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      {/* 2. Swap BrowserRouter for the new RouterProvider */}
+      <RouterProvider router={router} />
     </AuthProvider>
   );
 };

@@ -86,3 +86,23 @@ CREATE TABLE IF NOT EXISTS `snbx-efcpa-effectplan-vcdm.finalys_dataset.report_te
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 )
 CLUSTER BY client_id;
+
+--------------------------------------------------------------------------
+ALTER TABLE `snbx-efcpa-effectplan-vcdm.finalys_dataset.report_templates`
+ADD COLUMN dimension_settings JSON;
+------------------------------------------------------------------------------
+
+
+DROP TABLE IF EXISTS `snbx-efcpa-effectplan-vcdm.finalys_dataset.datasets`;
+
+CREATE TABLE `snbx-efcpa-effectplan-vcdm.finalys_dataset.datasets` (
+  client_id STRING,
+  dataset_id STRING,
+  dataset_name STRING,
+  external_id STRING,
+  period_from_id INT64,
+  period_start_id INT64,
+  period_to_id INT64,
+  version_status INT64
+)
+CLUSTER BY client_id;

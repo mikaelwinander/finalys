@@ -18,16 +18,17 @@ export const templateService = {
     colDimensions: string[];
     measures: string[];
     filters: Record<string, any>;
+    dimensionSettings?: Record<string, any>; // <-- NEW: Added to interface
   }) {
     const templateId = crypto.randomUUID();
     
-    // We use PARSE_JSON to safely insert JavaScript arrays/objects into BigQuery JSON columns
+    // NEW: Added dimension_settings to INSERT
     const query = `
       INSERT INTO \`${BQ_PROJECT}.${DATASET}.report_templates\`
-      (client_id, template_id, template_name, description, created_by, is_default, row_dimensions, col_dimensions, measures, filters)
+      (client_id, template_id, template_name, description, created_by, is_default, row_dimensions, col_dimensions, measures, filters, dimension_settings)
       VALUES
       (@clientId, @templateId, @templateName, @description, @userId, @isDefault, 
-       PARSE_JSON(@rowDims), PARSE_JSON(@colDims), PARSE_JSON(@measures), PARSE_JSON(@filters))
+       PARSE_JSON(@rowDims), PARSE_JSON(@colDims), PARSE_JSON(@measures), PARSE_JSON(@filters), PARSE_JSON(@dimSettings))
     `;
 
     await bqClient.query({
@@ -42,7 +43,8 @@ export const templateService = {
         rowDims: JSON.stringify(params.rowDimensions),
         colDims: JSON.stringify(params.colDimensions),
         measures: JSON.stringify(params.measures),
-        filters: JSON.stringify(params.filters || {})
+        filters: JSON.stringify(params.filters || {}),
+        dimSettings: JSON.stringify(params.dimensionSettings || {}) // <-- NEW: Parameter binding
       }
     });
 
@@ -50,8 +52,8 @@ export const templateService = {
     return templateId;
   },
 
-  // Add this inside the templateService object!
   async getTemplate(clientId: string, templateId: string) {
+    // NEW: Extract dimension_settings
     const query = `
       SELECT 
         template_id as id,
@@ -59,7 +61,8 @@ export const templateService = {
         TO_JSON_STRING(row_dimensions) as rowDimensions,
         TO_JSON_STRING(col_dimensions) as colDimensions,
         TO_JSON_STRING(measures) as measures,
-        TO_JSON_STRING(filters) as filters
+        TO_JSON_STRING(filters) as filters,
+        TO_JSON_STRING(dimension_settings) as dimensionSettings 
       FROM \`${BQ_PROJECT}.${DATASET}.report_templates\`
       WHERE client_id = @clientId AND template_id = @templateId
       LIMIT 1
@@ -77,19 +80,20 @@ export const templateService = {
     const colDims = JSON.parse(row.colDimensions || '[]');
     const measures = JSON.parse(row.measures || '[]');
     const filters = JSON.parse(row.filters || '{}');
+    const dimSettings = JSON.parse(row.dimensionSettings || '{}'); // <-- NEW: Parse setting
 
-    // Return the format that your pivotController's security guardrail expects
     return {
       id: row.id,
       name: row.name,
       allowedDimensions: [...rowDims, ...colDims],
       allowedMeasures: measures,
-      mandatoryFilters: filters
+      mandatoryFilters: filters,
+      dimensionSettings: dimSettings // <-- NEW: Returned to controller
     };
   },
 
   async getTemplates(clientId: string) {
-    // We use TO_JSON_STRING so Node.js can easily parse the BigQuery JSON back into arrays
+    // NEW: Extract dimension_settings for list view
     const query = `
       SELECT 
         template_id as id,
@@ -99,7 +103,8 @@ export const templateService = {
         TO_JSON_STRING(row_dimensions) as rowDimensions,
         TO_JSON_STRING(col_dimensions) as colDimensions,
         TO_JSON_STRING(measures) as measures,
-        TO_JSON_STRING(filters) as filters
+        TO_JSON_STRING(filters) as filters,
+        TO_JSON_STRING(dimension_settings) as dimensionSettings
       FROM \`${BQ_PROJECT}.${DATASET}.report_templates\`
       WHERE client_id = @clientId
       ORDER BY created_at DESC
@@ -115,7 +120,8 @@ export const templateService = {
       rowDimensions: JSON.parse(row.rowDimensions),
       colDimensions: JSON.parse(row.colDimensions),
       measures: JSON.parse(row.measures),
-      filters: JSON.parse(row.filters)
+      filters: JSON.parse(row.filters),
+      dimensionSettings: row.dimensionSettings ? JSON.parse(row.dimensionSettings) : {} // <-- NEW: Parse setting safely
     }));
   },
 
@@ -136,15 +142,16 @@ export const templateService = {
   async updateTemplate(params: {
     clientId: string;
     templateId: string;
-    templateName?: string; // Optional: in case they only want to update the layout, not the name
+    templateName?: string;
     rowDimensions: string[];
     colDimensions: string[];
     measures: string[];
     filters: Record<string, any>;
+    dimensionSettings?: Record<string, any>; // <-- NEW: Added to interface
   }) {
-    // If a new name is provided, update it. Otherwise, keep the existing name.
     const nameUpdateSql = params.templateName ? `template_name = @templateName,` : ``;
 
+    // NEW: Update dimension_settings column
     const query = `
       UPDATE \`${BQ_PROJECT}.${DATASET}.report_templates\`
       SET 
@@ -152,7 +159,8 @@ export const templateService = {
         row_dimensions = PARSE_JSON(@rowDims),
         col_dimensions = PARSE_JSON(@colDims),
         measures = PARSE_JSON(@measures),
-        filters = PARSE_JSON(@filters)
+        filters = PARSE_JSON(@filters),
+        dimension_settings = PARSE_JSON(@dimSettings) 
       WHERE client_id = @clientId AND template_id = @templateId
     `;
 
@@ -165,11 +173,11 @@ export const templateService = {
         rowDims: JSON.stringify(params.rowDimensions),
         colDims: JSON.stringify(params.colDimensions),
         measures: JSON.stringify(params.measures),
-        filters: JSON.stringify(params.filters || {})
+        filters: JSON.stringify(params.filters || {}),
+        dimSettings: JSON.stringify(params.dimensionSettings || {}) // <-- NEW: Parameter binding
       }
     });
 
     logger.info(`Template '${params.templateId}' layout updated for client ${params.clientId}`);
   }
 };
-

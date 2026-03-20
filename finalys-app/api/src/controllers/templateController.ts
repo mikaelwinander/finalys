@@ -9,7 +9,9 @@ export const templateController = {
     try {
       const clientId = req.user!.clientId;
       const userId = req.user!.uid;
-      const { templateName, description, isDefault, rowDimensions, colDimensions, measures, filters } = req.body;
+      
+      // FIX: Added dimensionSettings to the extracted body fields
+      const { templateName, description, isDefault, rowDimensions, colDimensions, measures, filters, dimensionSettings } = req.body;
 
       if (!templateName || !rowDimensions || !colDimensions || !measures) {
         res.status(400).json({ error: 'Missing required template layout data' });
@@ -17,8 +19,16 @@ export const templateController = {
       }
 
       const templateId = await templateService.saveTemplate({
-        clientId, userId, templateName, description, isDefault, 
-        rowDimensions, colDimensions, measures, filters
+        clientId, 
+        userId, 
+        templateName, 
+        description, 
+        isDefault, 
+        rowDimensions, 
+        colDimensions, 
+        measures, 
+        filters,
+        dimensionSettings // <-- Passed to service
       });
 
       res.status(200).json({ success: true, templateId });
@@ -43,7 +53,7 @@ export const templateController = {
     try {
       const clientId = req.user!.clientId;
       
-      // FIX: Explicitly tell TypeScript this is a single string
+      // Explicitly tell TypeScript this is a single string
       const templateId = req.params.templateId as string; 
 
       if (!templateId) {
@@ -65,15 +75,15 @@ export const templateController = {
       const clientId = req.user!.clientId;
       const templateId = req.params.templateId as string;
       
-      // We pull the layout arrays out of the request body
-      const { templateName, rowDimensions, colDimensions, measures, filters } = req.body;
+      // FIX: Added dimensionSettings to the extracted body fields
+      const { templateName, rowDimensions, colDimensions, measures, filters, dimensionSettings } = req.body;
 
       if (!templateId || !rowDimensions || !colDimensions || !measures) {
         res.status(400).json({ error: 'Missing required layout data for update' });
         return;
       }
 
-      // We pass everything as a single object to match your new service signature!
+      // Pass everything as a single object to match the new service signature
       await templateService.updateTemplate({
         clientId,
         templateId,
@@ -81,7 +91,8 @@ export const templateController = {
         rowDimensions,
         colDimensions,
         measures,
-        filters
+        filters,
+        dimensionSettings // <-- Passed to service
       });
       
       res.status(200).json({ success: true, message: 'Template updated successfully' });

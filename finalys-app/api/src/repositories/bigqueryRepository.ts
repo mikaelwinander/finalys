@@ -1,3 +1,4 @@
+//finalys-app/api/src/repositories/bigqueryRepository.ts
 import { bqClient } from '../config/bigqueryClient';
 import { logger } from '../utils/logger';
 

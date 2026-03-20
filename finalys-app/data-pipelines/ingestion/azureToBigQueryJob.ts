@@ -2,7 +2,6 @@
 import 'dotenv/config';
 import * as sql from 'mssql';
 import { BigQuery } from '@google-cloud/bigquery';
-// REMOVED: import { cacheService } from '../../api/src/services/cacheService'; (We will import this dynamically at the end!)
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -21,6 +20,7 @@ const BQ_DATASET = 'finalys_dataset';
 const BQ_TABLE_FACTS = 'financial_data_view';
 const BQ_TABLE_MAPPING = 'dimension_mapping';
 const BQ_TABLE_DATA = 'dimension_data';
+const BQ_TABLE_DATASET = 'datasets'; // <-- Updated table name
 
 const TARGET_CLIENT_ID = process.env.TARGET_CLIENT_ID || 'FIN';
 
@@ -37,6 +37,17 @@ interface BqDimDataRow {
   dim_data_id: string;
   dim_data_name: string;
   sort_index: number | null;
+}
+
+interface BqDatasetMappingRow {
+  client_id: string;
+  dataset_id: string;
+  dataset_name: string;
+  external_id: string;
+  period_from_id: number;
+  period_start_id: number;
+  period_to_id: number;
+  version_status: number;
 }
 
 export const runAzureToBigQuerySync = async () => {
@@ -87,7 +98,6 @@ export const runAzureToBigQuerySync = async () => {
     if (rowCount > 0) {
       console.log(`[ETL] Loading ${rowCount} fact rows into BigQuery...`);
       
-      // Safety Check: Only delete if the table exists
       try {
         await bqClient.query({
           query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_FACTS}\` WHERE client_id = @clientId`,
@@ -100,17 +110,39 @@ export const runAzureToBigQuerySync = async () => {
            throw err;
         }
       }
-      
+
       await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_FACTS).load(tempFilePath, {
         sourceFormat: 'NEWLINE_DELIMITED_JSON',
-        autodetect: false, // Switched to true so it builds the schema if missing
+        autodetect: false,
+        schema: {
+          fields: [
+            { name: 'client_id', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'dataset_id', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'period_id', type: 'INTEGER', mode: 'REQUIRED' },
+            { name: 'amount_type_id', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'dim01', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim02', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim03', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim04', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim05', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim06', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim07', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim08', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim09', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim10', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim11', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'dim12', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'amount', type: 'FLOAT', mode: 'REQUIRED' }
+          ]
+        },
+        schemaUpdateOptions: ['ALLOW_FIELD_ADDITION'],
         writeDisposition: 'WRITE_APPEND',
       });
       console.log(`[ETL] Fact load complete.`);
     }
 
     // ==========================================
-    // STEP 2: SYNC DIMENSION MAPPING (FIXED FOR BQ BUFFER & MISSING TABLES)
+    // STEP 2: SYNC DIMENSION MAPPING
     // ==========================================
     const dimsResult = await pool.request()
       .input('clientId', sql.NVarChar, TARGET_CLIENT_ID)
@@ -125,7 +157,6 @@ export const runAzureToBigQuerySync = async () => {
       `);
     
     if (dimsResult.recordset.length > 0) {
-      // 1. Delete old rows (Gracefully handle the streaming buffer hangover & missing tables)
       try {
         await bqClient.query({
           query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_MAPPING}\` WHERE client_id = @clientId`,
@@ -141,22 +172,28 @@ export const runAzureToBigQuerySync = async () => {
         }
       }
 
-      // 2. Write array to a temporary JSONL file
       const mapTempFile = path.join(__dirname, `temp_map_${TARGET_CLIENT_ID}.json`);
       fs.writeFileSync(mapTempFile, dimsResult.recordset.map(row => JSON.stringify(row)).join('\n'));
 
-      // 3. Batch Load (Bypasses Streaming Buffer!)
       await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_MAPPING).load(mapTempFile, {
         sourceFormat: 'NEWLINE_DELIMITED_JSON',
-        autodetect: false, // Build schema if missing
+        autodetect: false,
+        schema: {
+          fields: [
+            { name: 'client_id', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'dim_id', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'dim_name', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'position', type: 'INTEGER', mode: 'REQUIRED' }
+          ]
+        },
         writeDisposition: 'WRITE_APPEND',
       });
-      fs.unlinkSync(mapTempFile); // Clean up
+      fs.unlinkSync(mapTempFile);
       console.log(`[ETL] Loaded ${dimsResult.recordset.length} dimension mappings.`);
     }
 
     // ==========================================
-    // STEP 3: SYNC DIMENSION DATA MEMBERS (FIXED FOR BQ BUFFER & MISSING TABLES)
+    // STEP 3: SYNC DIMENSION DATA MEMBERS
     // ==========================================
     const dataResult = await pool.request()
       .input('clientId', sql.NVarChar, TARGET_CLIENT_ID)
@@ -172,7 +209,6 @@ export const runAzureToBigQuerySync = async () => {
       `);
     
     if (dataResult.recordset.length > 0) {
-      // 1. Delete old rows (Gracefully handle the streaming buffer hangover & missing tables)
       try {
         await bqClient.query({
           query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_DATA}\` WHERE client_id = @clientId`,
@@ -188,36 +224,103 @@ export const runAzureToBigQuerySync = async () => {
         }
       }
 
-      // 2. Write array to a temporary JSONL file
       const dataTempFile = path.join(__dirname, `temp_data_${TARGET_CLIENT_ID}.json`);
       fs.writeFileSync(dataTempFile, dataResult.recordset.map(row => JSON.stringify(row)).join('\n'));
 
-      // 3. Batch Load (Bypasses Streaming Buffer!)
+      // FIXED: Targets BQ_TABLE_DATA and uses the correct dimension_data schema
       await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_DATA).load(dataTempFile, {
         sourceFormat: 'NEWLINE_DELIMITED_JSON',
-        autodetect: false, // Build schema if missing
+        autodetect: false,
+        schema: {
+          fields: [
+            { name: 'client_id', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'dim_id', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'dim_data_id', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'dim_data_name', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'sort_index', type: 'INTEGER', mode: 'NULLABLE' }
+          ]
+        },
         writeDisposition: 'WRITE_APPEND',
       });
-      fs.unlinkSync(dataTempFile); // Clean up
+      fs.unlinkSync(dataTempFile);
       console.log(`[ETL] Loaded ${dataResult.recordset.length} dimension data members.`);
     }
 
     console.log('[ETL] Pipeline completed successfully!');
     
     // ==========================================
-    // STEP 4: GRACEFUL CACHE INVALIDATION
+    // STEP 4: SYNC DATASETS & METADATA
+    // ==========================================
+    console.log('[ETL] Extracting Dataset mappings...');
+    const datasetResult = await pool.request()
+      .input('clientId', sql.NVarChar, TARGET_CLIENT_ID)
+      .query<BqDatasetMappingRow>(`
+        SELECT 
+          ClientId AS client_id,
+          PlanVersionId AS dataset_id,
+          PlanVersionName AS dataset_name,
+          ExternalId AS external_id,
+          ForecastPeriodId AS period_from_id, 
+          StartPeriodId AS period_start_id,
+          EndPeriodId AS period_to_id,
+          VersionStatus AS version_status
+        FROM dbo.xp_view_version
+        WHERE ClientId = @clientId
+      `);
+      
+    if (datasetResult.recordset.length > 0) {
+      try {
+        await bqClient.query({
+          query: `DELETE FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE_DATASET}\` WHERE client_id = @clientId`,
+          params: { clientId: TARGET_CLIENT_ID }
+        });
+      } catch (err: any) {
+        if (err.message && err.message.includes('streaming buffer')) {
+          console.warn(`[ETL WARNING] Buffer lock active on datasets table. Skipping DELETE.`);
+        } else if (err.message && err.message.includes('Not found')) {
+           console.log(`[ETL] Table ${BQ_TABLE_DATASET} not found. Ensure you created it in BigQuery!`);
+        } else {
+          throw err;
+        }
+      }
+
+      const dsTempFile = path.join(__dirname, `temp_ds_${TARGET_CLIENT_ID}.json`);
+      fs.writeFileSync(dsTempFile, datasetResult.recordset.map(row => JSON.stringify(row)).join('\n'));
+
+      // FIXED: Targets BQ_TABLE_DATASET and uses the full extended metadata schema
+      await bqClient.dataset(BQ_DATASET).table(BQ_TABLE_DATASET).load(dsTempFile, {
+        sourceFormat: 'NEWLINE_DELIMITED_JSON',
+        autodetect: false, 
+        schema: {
+          fields: [
+            { name: 'client_id', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'dataset_id', type: 'STRING', mode: 'REQUIRED' },
+            { name: 'dataset_name', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'external_id', type: 'STRING', mode: 'NULLABLE' },
+            { name: 'period_from_id', type: 'INTEGER', mode: 'NULLABLE' },
+            { name: 'period_start_id', type: 'INTEGER', mode: 'NULLABLE' },
+            { name: 'period_to_id', type: 'INTEGER', mode: 'NULLABLE' },
+            { name: 'version_status', type: 'INTEGER', mode: 'NULLABLE' }
+          ]
+        },
+        writeDisposition: 'WRITE_APPEND',
+      });
+      fs.unlinkSync(dsTempFile);
+      console.log(`[ETL] Loaded ${datasetResult.recordset.length} datasets.`);
+    }
+
+    // ==========================================
+    // STEP 5: GRACEFUL CACHE INVALIDATION
     // ==========================================
     console.log(`[ETL] Attempting to trigger cache invalidation for ${TARGET_CLIENT_ID}...`);
     try {
-      // Dynamically import the cache service only when we need it
       const { cacheService } = await import('../../api/src/services/cacheService');
       await cacheService.invalidateClientCache(TARGET_CLIENT_ID);
       console.log(`[ETL] Cache successfully cleared.`);
     } catch (cacheError) {
       console.warn(`\n[ETL WARNING] Cache invalidation skipped. 
 --> Reason: Could not connect to the Redis server. 
---> Impact: Your API might serve old cached data for a few minutes. 
---> Fix: To enable caching, start a local Redis server (port 6379) or add a cloud REDIS_URL to your .env file.\n`);
+--> Impact: Your API might serve old cached data for a few minutes.\n`);
     }
 
   } catch (error: any) {
