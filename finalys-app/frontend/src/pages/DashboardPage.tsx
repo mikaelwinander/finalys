@@ -1,18 +1,15 @@
 // /frontend/src/pages/DashboardPage.tsx
-
 import { type FC, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useBlocker } from 'react-router-dom';
 import { AdjustmentPopover } from '../components/analytics/AdjustmentPopover';
 import { SimulationHistoryPanel } from '../components/analytics/SimulationHistoryPanel';
 import { usePivotData } from '../hooks/usePivotData';
-import { usePivotDragDrop } from '../hooks/usePivotDragDrop';
+import { usePivotDragDrop, VALUES_VIRTUAL_DIM, type VarianceDef } from '../hooks/usePivotDragDrop';
 import { PivotTable } from '../components/PivotTable/PivotTable';
 import { useAuth } from '../hooks/useAuth';
-import { PivotSettingsModal } from '../components/PivotTable/PivotSettingsModal';
 import { ConfigurationDrawer } from '../components/PivotTable/ConfigurationDrawer';
 import { Popover } from '../components/common/Popover';
 
-// Centralized Assets & Layout
 import { PageContainer } from '../components/Layout/PageContainer';
 import { Button } from '../components/common/Button';
 import { Icon } from '../components/common/Icon';
@@ -27,13 +24,9 @@ const FALLBACK_DIMENSIONS = [
 ];
 
 const DashboardPage: FC = () => {
-  // ---------------------------------------------------------------------------
-  // 1. ALL HOOKS MUST LIVE HERE AT THE TOP (Before any early returns)
-  // ---------------------------------------------------------------------------
   const hasAppliedDefault = useRef(false);
   const { token, isLoading: isAuthLoading } = useAuth();
   
-  // ✅ FIXED: State is now safely inside the component body!
   const [fullDictionary, setFullDictionary] = useState<Record<string, string>>({});
   
   const [availableDatasets, setAvailableDatasets] = useState<string[]>([]);
@@ -52,27 +45,18 @@ const DashboardPage: FC = () => {
   });
 
   const [includeAdjustments, setIncludeAdjustments] = useState(true);
-  const [showVariance, setShowVariance] = useState(false);
-  const [datasetLayout, setDatasetLayout] = useState<'col' | 'row'>('col');
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [activeSettingsMeasure] = useState<string | null>(null);
+  const [variances, setVariances] = useState<VarianceDef[]>([]); 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   
-  // Template State
   const [templates, setTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   
-  // Staged View Selection State (Safely at the top!)
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
-  const [stagedTemplateId, setStagedTemplateId] = useState<string | null>(null);
 
   const [selectedCell, setSelectedCell] = useState<{ value: number; coordinates: Record<string, string>; datasetId: string; } | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-  // ---------------------------------------------------------------------------
-  // 2. EFFECTS AND CALLBACKS
-  // ---------------------------------------------------------------------------
   const fetchTemplates = useCallback(async (isInitialLoad = false) => {
     if (!token) return;
     try {
@@ -83,7 +67,6 @@ const DashboardPage: FC = () => {
       if (res.ok) {
         const json = await res.json();
         
-        // 🚨 CRITICAL FIX: Parse the payload if the backend returned a string
         const fetchedTemplates = typeof json.data === 'string' 
           ? JSON.parse(json.data) 
           : (json.data || []);
@@ -95,37 +78,31 @@ const DashboardPage: FC = () => {
           if (defaultTemplate && dragDropState.applyLayout) {
             setSelectedTemplateId(defaultTemplate.id);
             
-            // 1. Pass the saved settings to the drag-and-drop state manager
+            const savedFilters = defaultTemplate.filters || {};
+            const savedDatasets = savedFilters.datasetIds || [];
+            const savedVariances = savedFilters.variances || [];
+            
             dragDropState.applyLayout(
               defaultTemplate.rowDimensions,
               defaultTemplate.colDimensions,
               defaultTemplate.measures,
-              defaultTemplate.dimensionSettings // <-- CRITICAL: Added this
+              defaultTemplate.dimensionSettings,
+              savedDatasets,
+              savedVariances
             );
             
-            // 2. Load the saved settings directly into the active layout immediately
             setActiveLayout({
               rowDims: defaultTemplate.rowDimensions || [],
               colDims: defaultTemplate.colDimensions || [],
               filterDims: [], 
               measures: defaultTemplate.measures || ['amount'],
-              dimensionSettings: defaultTemplate.dimensionSettings || {} // <-- CRITICAL: Added this
+              dimensionSettings: defaultTemplate.dimensionSettings || {}
             });
 
-          // NEW: Restore the Values settings from the filters object
-          const savedFilters = defaultTemplate.filters || {}; // (Use `template.filters` in handleApply)
-                      
-          if (savedFilters.datasetIds) setDatasetIds(savedFilters.datasetIds);
-
-          // Explicitly set the layout, or reset to 'col' if it doesn't exist
-          if (savedFilters.datasetLayout) {
-            setDatasetLayout(savedFilters.datasetLayout);
-          } else {
-            setDatasetLayout('col'); 
-          }
-
-          if (savedFilters.includeAdjustments !== undefined) setIncludeAdjustments(savedFilters.includeAdjustments);
-          if (savedFilters.showVariance !== undefined) setShowVariance(savedFilters.showVariance);
+            if (savedDatasets.length > 0) setDatasetIds(savedDatasets);
+            if (savedFilters.includeAdjustments !== undefined) setIncludeAdjustments(savedFilters.includeAdjustments);
+            setVariances(savedVariances);
+            
             hasAppliedDefault.current = true;
           }
         }
@@ -133,7 +110,6 @@ const DashboardPage: FC = () => {
     } catch (error) {
       console.error("Failed to load templates", error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   useEffect(() => {
@@ -150,12 +126,10 @@ const DashboardPage: FC = () => {
         colDimensions: activeLayout.colDims,
         measures: activeLayout.measures,
         dimensionSettings: activeLayout.dimensionSettings,
-        // NEW: Bundle the Values state into the existing filters column!
         filters: {
           datasetIds,
-          datasetLayout,
           includeAdjustments,
-          showVariance
+          variances
         } 
       };
 
@@ -186,11 +160,17 @@ const DashboardPage: FC = () => {
 
     const template = templates.find(t => t.id === templateId);
     if (template && dragDropState.applyLayout) {
+      const savedFilters = template.filters || {};
+      const savedDatasets = savedFilters.datasetIds || [];
+      const savedVariances = savedFilters.variances || [];
+
       dragDropState.applyLayout(
         template.rowDimensions, 
         template.colDimensions, 
         template.measures,
-        template.dimensionSettings 
+        template.dimensionSettings,
+        savedDatasets,
+        savedVariances
       );
       
       setActiveLayout({
@@ -200,20 +180,10 @@ const DashboardPage: FC = () => {
         measures: template.measures || ['amount'],
         dimensionSettings: template.dimensionSettings || {} 
       });
-
-      // 🚨 FIX: Using 'template' here instead of 'defaultTemplate'
-      const savedFilters = template.filters || {}; 
       
-      if (savedFilters.datasetIds) setDatasetIds(savedFilters.datasetIds);
-      
-      if (savedFilters.datasetLayout) {
-        setDatasetLayout(savedFilters.datasetLayout);
-      } else {
-        setDatasetLayout('col'); // Reset to default if missing
-      }
-      
+      if (savedDatasets.length > 0) setDatasetIds(savedDatasets);
       if (savedFilters.includeAdjustments !== undefined) setIncludeAdjustments(savedFilters.includeAdjustments);
-      if (savedFilters.showVariance !== undefined) setShowVariance(savedFilters.showVariance);
+      setVariances(savedVariances);
     }
   };
 
@@ -228,9 +198,8 @@ const DashboardPage: FC = () => {
         dimensionSettings: activeLayout.dimensionSettings,
         filters: {
           datasetIds,
-          datasetLayout, // <--- MUST BE HERE
           includeAdjustments,
-          showVariance
+          variances
         } 
       };
 
@@ -269,8 +238,8 @@ const DashboardPage: FC = () => {
         rowDimensions: activeLayout.rowDims,
         colDimensions: activeLayout.colDims,
         measures: activeLayout.measures,
-        filters: {},
-        dimensionSettings: activeLayout.dimensionSettings // <--- ADD THIS
+        dimensionSettings: activeLayout.dimensionSettings,
+        filters: { datasetIds, includeAdjustments, variances }
       };
 
       const res = await fetch(`/api/templates/${selectedTemplateId}`, {
@@ -315,10 +284,6 @@ const DashboardPage: FC = () => {
     }
   };
 
-  const toggleDataset = (ds: string) => {
-    setDatasetIds(prev => prev.includes(ds) ? prev.filter(id => id !== ds) : [...prev, ds]);
-  };
-
   useEffect(() => {
     if (isAuthLoading) return;
     if (!token) return setWorkspaceStatus('auth_error');
@@ -332,15 +297,12 @@ const DashboardPage: FC = () => {
 
         const [dsJson, dimJson] = await Promise.all([dsRes.json(), dimRes.json()]);
         const dsArray = typeof dsJson.data === 'string' ? JSON.parse(dsJson.data) : dsJson.data;
-        
-        // Grab the structural array from the new payload for the Drawer
         const dimArray = typeof dimJson.data === 'string' ? JSON.parse(dimJson.data) : dimJson.data;
 
         if (dimArray?.length > 0) {
           setAvailableDimensions(dimArray.map((d: any) => ({ id: d.dim_id, label: d.dim_name })));
         }
 
-        // --- NEW: Save the flat dictionary for the Pivot Table names! ---
         if (dimJson.dictionary) {
           setFullDictionary(dimJson.dictionary);
         }
@@ -360,12 +322,9 @@ const DashboardPage: FC = () => {
     initWorkspace();
   }, [token, isAuthLoading]);
 
-  
-
   const dimensionMap = useMemo(() => {
     const map: Record<string, string> = { ...fullDictionary };
 
-    // --- NEW: Bulletproof the dictionary against casing and trailing spaces ---
     Object.entries(fullDictionary).forEach(([k, v]) => {
       const cleanKey = String(k).trim().toLowerCase();
       map[cleanKey] = v;
@@ -373,50 +332,62 @@ const DashboardPage: FC = () => {
 
     availableDimensions.forEach(dim => { 
       map[dim.id] = dim.label; 
-      map[String(dim.id).trim().toLowerCase()] = dim.label; // Clean index
+      map[String(dim.id).trim().toLowerCase()] = dim.label;
     });
     
     AVAILABLE_MEASURES.forEach(m => { 
       map[m.id] = m.label; 
-      map[String(m.id).trim().toLowerCase()] = m.label; // Clean index
+      map[String(m.id).trim().toLowerCase()] = m.label;
     });
     
     return map;
   }, [availableDimensions, fullDictionary]);
 
-  const activeDimensions = Array.from(new Set([...activeLayout.rowDims, ...activeLayout.colDims]));
+  const activeDimensions = useMemo(() => {
+    const dims = new Set([...activeLayout.rowDims, ...activeLayout.colDims]);
+    dims.delete(VALUES_VIRTUAL_DIM);
+    return Array.from(dims);
+  }, [activeLayout.rowDims, activeLayout.colDims]);
 
-  // Determine if the current layout has unsaved changes compared to the database
-  // Determine if the current layout has unsaved changes compared to the database
   const isDirty = useMemo(() => {
     if (!selectedTemplateId) return false;
     
     const activeTemplate = templates.find(t => t.id === selectedTemplateId);
     if (!activeTemplate) return false;
 
-    // 1. Build the current state object
+    // HELPER: Normalizes older templates so the __VALUES__ token doesn't trigger false positives
+    const normalizeLayout = (rows: string[], cols: string[]) => {
+      const safeRows = rows || [];
+      let safeCols = cols || [];
+      if (!safeRows.includes('__VALUES__') && !safeCols.includes('__VALUES__')) {
+        safeCols = [...safeCols, '__VALUES__'];
+      }
+      return { safeRows, safeCols };
+    };
+
+    const currentLayout = normalizeLayout(activeLayout.rowDims, activeLayout.colDims);
+    const savedLayout = normalizeLayout(activeTemplate.rowDimensions, activeTemplate.colDimensions);
+
     const current = {
-      rowDimensions: activeLayout.rowDims,
-      colDimensions: activeLayout.colDims,
+      rowDimensions: currentLayout.safeRows,
+      colDimensions: currentLayout.safeCols,
       measures: activeLayout.measures,
       dimensionSettings: activeLayout.dimensionSettings || {},
-      filters: { datasetIds, datasetLayout, includeAdjustments, showVariance } // <-- datasetLayout must be here
+      filters: { datasetIds, includeAdjustments, variances } 
     };
 
     const savedFilters = activeTemplate.filters || {};
     const defaultDataset = availableDatasets.length > 0 ? [availableDatasets[0]] : [];
 
-    // 2. Build the saved state object
     const saved = {
-      rowDimensions: activeTemplate.rowDimensions || [],
-      colDimensions: activeTemplate.colDimensions || [],
+      rowDimensions: savedLayout.safeRows,
+      colDimensions: savedLayout.safeCols,
       measures: activeTemplate.measures || ['amount'],
       dimensionSettings: activeTemplate.dimensionSettings || {},
       filters: {
         datasetIds: savedFilters.datasetIds || defaultDataset, 
-        datasetLayout: savedFilters.datasetLayout || 'col', // <-- datasetLayout fallback must be here
         includeAdjustments: savedFilters.includeAdjustments ?? true,
-        showVariance: savedFilters.showVariance ?? false
+        variances: savedFilters.variances || []
       }
     };
 
@@ -424,20 +395,18 @@ const DashboardPage: FC = () => {
   }, [
     activeLayout, 
     datasetIds, 
-    datasetLayout, // <-- MUST BE IN DEPENDENCIES
     includeAdjustments, 
-    showVariance, 
+    variances, 
     selectedTemplateId, 
     templates, 
     availableDatasets
   ]);
 
-  // Warn the user if they try to close or refresh the tab with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isDirty) {
         e.preventDefault();
-        e.returnValue = ''; // Required for Chrome
+        e.returnValue = '';
       }
     };
 
@@ -445,32 +414,18 @@ const DashboardPage: FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty]);
 
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
-        e.preventDefault();
-        e.returnValue = ''; // Required for Chrome
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty]);
-
-  // --- ADD THIS NEW PART RIGHT HERE ---
   const blocker = useBlocker(isDirty);
 
   useEffect(() => {
     if (blocker.state === "blocked") {
       const confirmLeave = window.confirm("You have unsaved changes to this view. Are you sure you want to leave?");
       if (confirmLeave) {
-        blocker.proceed(); // Let them leave
+        blocker.proceed();
       } else {
-        blocker.reset(); // Cancel the navigation and keep them on the dashboard
+        blocker.reset();
       }
     }
   }, [blocker]);
-  // --- END NEW PART ---
 
   const { data, isLoading, error, refetch } = usePivotData({
     datasetIds,
@@ -532,9 +487,6 @@ const DashboardPage: FC = () => {
   const resolveDim = (id: string) => availableDimensions.find(d => d.id === id) || { id, label: id };
   const resolveMeasure = (id: string) => AVAILABLE_MEASURES.find(m => m.id === id) || { id, label: id };
 
-  // ---------------------------------------------------------------------------
-  // 3. EARLY RETURNS (Must happen AFTER all hooks are declared)
-  // ---------------------------------------------------------------------------
   if (workspaceStatus === 'loading' || isAuthLoading) {
     return (
       <div className="flex justify-center items-center h-full">
@@ -543,7 +495,6 @@ const DashboardPage: FC = () => {
     );
   }
 
-  // 🚨 ADD THIS: Graceful fallback for API Timeouts/Failures
   if (workspaceStatus === 'api_error') {
     return (
       <PageContainer title="System Error" description="Connection Timeout">
@@ -562,24 +513,17 @@ const DashboardPage: FC = () => {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // 4. RENDER PREPARATION
-  // ---------------------------------------------------------------------------
   const activeTemplate = templates.find(t => t.id === selectedTemplateId);
   const currentViewName = activeTemplate ? 'View: '+activeTemplate.name : 'View: '+'Custom Layout';
 
-  // 🚨 CRITICAL FIX: Guarantee we are working with an array before rendering
   const safeTemplates = Array.isArray(templates) ? templates : [];
   
-  // The dropdown content mapping
-  // The dropdown content mapping
   const ViewMenuContent = (
     <div className="flex flex-col w-48 py-1">
       <div className="px-3 py-2 text-xs font-semibold text-muted-foreground border-b border-border uppercase tracking-wider">
         Select View
       </div>
       
-      {/* 1. The Custom Layout Button (Uses '') */}
       <Button
         variant="ghost"
         size="sm"
@@ -597,7 +541,6 @@ const DashboardPage: FC = () => {
         Custom Layout
       </Button>
       
-      {/* 2. The Saved Template Buttons (Uses t.id) */}
       {safeTemplates.map(t => (
         <Button
           key={t.id}
@@ -622,7 +565,6 @@ const DashboardPage: FC = () => {
 
   return (
     <PageContainer 
-      //title="Views" 
       title={currentViewName}
     >
       <div className="flex flex-col h-full space-y-6">
@@ -637,7 +579,6 @@ const DashboardPage: FC = () => {
               
               <Popover 
                 isOpen={isViewMenuOpen}
-                // Now onOpenChange only needs to manage the visibility state
                 onOpenChange={setIsViewMenuOpen}
                 trigger={
                   <Button 
@@ -659,7 +600,6 @@ const DashboardPage: FC = () => {
 
               {selectedTemplateId && (
                 <>
-                  {/* NEW: The Smart Save Button! */}
                   <Button 
                     variant="ghost" 
                     size="sm" 
@@ -671,7 +611,6 @@ const DashboardPage: FC = () => {
                     <Icon name="save" size={16} />
                   </Button>
                   
-                  {/* (Edit and Delete stay exactly the same) */}
                   <Button variant="ghost" size="sm" onClick={handleRenameTemplate} title="Rename Template" className="px-2 text-interactive hover:text-interactive-hover hover:bg-interactive-muted">
                     <Icon name="edit" size={16} />
                   </Button>
@@ -702,22 +641,19 @@ const DashboardPage: FC = () => {
               </button>
             </div>
 
-            {/* Values Configuration Button */}
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setIsSettingsModalOpen(true)}
-            >
-              <Icon name="settings" size={16} className="mr-2" />
-              Values
-            </Button>
-
             {/* Layout Configuration Button */}
             <Button 
               variant="outline" 
               size="sm"
               onClick={() => {
-                dragDropState.applyLayout(activeLayout.rowDims, activeLayout.colDims, activeLayout.measures);
+                dragDropState.applyLayout(
+                  activeLayout.rowDims, 
+                  activeLayout.colDims, 
+                  activeLayout.measures,
+                  activeLayout.dimensionSettings,
+                  datasetIds,
+                  variances
+                );
                 setIsDrawerOpen(true);
               }}
             >
@@ -744,12 +680,12 @@ const DashboardPage: FC = () => {
                 colDimensions={activeLayout.colDims}
                 measures={activeLayout.measures}
                 dimensionMap={dimensionMap}
-                dimensionSettings={activeLayout.dimensionSettings} // <--- ADD THIS LINE
+                dimensionSettings={activeLayout.dimensionSettings}
                 isLoading={false}
                 error={error}
-                showVariance={showVariance}
+                showVariance={false} // <-- Deprecated, passing false
+                variances={variances} // <-- Passes array properly!
                 datasetIds={datasetIds}
-                datasetDirection={datasetLayout}
                 onCellClick={(value, coordinates) => setSelectedCell({ value, coordinates, datasetId: coordinates.datasetId || datasetIds[0] })}
               />
             </div>
@@ -759,22 +695,6 @@ const DashboardPage: FC = () => {
           <SimulationHistoryPanel history={history} onUndo={handleUndo} isLoading={isHistoryLoading} />
         </div>
       </div>
-
-      {/* Settings Modal */}
-      <PivotSettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        measureLabel={dimensionMap[activeSettingsMeasure || ''] || 'Value'}
-        availableDatasets={availableDatasets}
-        datasetIds={datasetIds}
-        toggleDataset={toggleDataset}
-        datasetLayout={datasetLayout}
-        setDatasetLayout={setDatasetLayout}
-        includeAdjustments={includeAdjustments}
-        setIncludeAdjustments={setIncludeAdjustments}
-        showVariance={showVariance}
-        setShowVariance={setShowVariance}
-      />
 
       {/* Adjustment Popover */}
       {selectedCell && (
@@ -793,12 +713,6 @@ const DashboardPage: FC = () => {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         onCancel={() => {
-          dragDropState.applyLayout(
-            activeLayout.rowDims,
-            activeLayout.colDims,
-            activeLayout.measures,
-            activeLayout.dimensionSettings
-          );
           setIsDrawerOpen(false);
         }}
         onApply={() => {
@@ -809,10 +723,14 @@ const DashboardPage: FC = () => {
             measures: dragDropState.measures,
             dimensionSettings: dragDropState.dimensionSettings 
           });
+          setDatasetIds(dragDropState.stagedDatasetIds);
+          setVariances(dragDropState.stagedVariances);
           setIsDrawerOpen(false);
         }}
         dragDropState={dragDropState}
         availableDimensions={availableDimensions}
+        availableDatasets={availableDatasets}
+        dimensionMap={dimensionMap} // <-- Added for dictionary translation
         resolveDim={resolveDim}
         resolveMeasure={resolveMeasure}
       />

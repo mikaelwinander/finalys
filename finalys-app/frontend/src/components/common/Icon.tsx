@@ -45,7 +45,8 @@ import {
   Check,
   AlertTriangle,
   Info,
-  HelpCircle
+  HelpCircle,
+  GripVertical
 } from 'lucide-react';
 
 // 1. The Registry: Map semantic names to actual icon implementations
@@ -96,6 +97,7 @@ const ICON_MAP = {
   warning: AlertTriangle,
   info: Info,
   help: HelpCircle,
+  grip: GripVertical, // <-- ADD THIS
 } as const;
 
 // 2. Strict Typing: Autocomplete will only allow valid icon names
