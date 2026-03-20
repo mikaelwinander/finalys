@@ -1,3 +1,4 @@
+// /frontend/src/utils/pivotMatrixUtil.ts
 import type { PivotRow } from '../types/pivot.types';
 
 export interface MatrixParams {
@@ -10,11 +11,28 @@ export interface MatrixParams {
   datasetDirection: 'row' | 'col';
 }
 
+// NEW: Interfaces for the hierarchical UI rendering
+export interface ColHeaderCell {
+  rawId: string;
+  colSpan: number;
+  isVariance: boolean;
+}
+
+export interface RowHeaderCell {
+  rawId: string;
+  rowSpan: number;
+  visible: boolean; // False if hidden by a previous rowSpan
+  isVariance: boolean;
+}
+
 export interface MatrixResult {
-  rowHeaders: string[];
-  colHeaders: string[];
+  rowHeaders: string[]; // Retained for flat dataMatrix lookup
+  colHeaders: string[]; // Retained for flat dataMatrix lookup
   dataMatrix: Record<string, Record<string, number>>;
   coordMap: Record<string, Record<string, any>>;
+  // NEW: Multi-tiered rendering arrays
+  colHeaderRows: ColHeaderCell[][];
+  rowHeaderGrid: RowHeaderCell[][];
 }
 
 export const generatePivotMatrix = ({
@@ -27,7 +45,10 @@ export const generatePivotMatrix = ({
   datasetDirection
 }: MatrixParams): MatrixResult => {
   if (!data || data.length === 0) {
-    return { rowHeaders: [], colHeaders: [], dataMatrix: {}, coordMap: {} };
+    return { 
+      rowHeaders: [], colHeaders: [], dataMatrix: {}, coordMap: {}, 
+      colHeaderRows: [], rowHeaderGrid: [] 
+    };
   }
 
   const rowSet = new Set<string>();
@@ -120,10 +141,94 @@ export const generatePivotMatrix = ({
     }
   }
 
+  const sortedRowHeaders = Array.from(rowSet).sort();
+  const sortedColHeaders = Array.from(colSet).sort();
+
+  // --- PHASE 3: BUILD COLUMN HEADER HIERARCHY (colSpan logic) ---
+  const buildColHeaderRows = (flatKeys: string[]): ColHeaderCell[][] => {
+    if (flatKeys.length === 0) return [];
+    
+    // Split by the pipe delimiter, taking care not to split summary variances
+    const splitKeys = flatKeys.map(k => k.startsWith('Variance (') ? [k] : k.split(' | '));
+    const maxDepth = Math.max(...splitKeys.map(k => k.length));
+
+    // Normalize length so they line up vertically
+    const normalized = splitKeys.map(k => {
+      const padded = [...k];
+      while (padded.length < maxDepth) padded.push(padded[padded.length - 1] || '');
+      return padded;
+    });
+
+    const rows: ColHeaderCell[][] = Array.from({ length: maxDepth }, () => []);
+
+    for (let depth = 0; depth < maxDepth; depth++) {
+      let currentLabel = normalized[0][depth];
+      let span = 1;
+
+      for (let i = 1; i < normalized.length; i++) {
+        // Cells only group if the current label AND all parent labels match
+        const parentChainCurrent = normalized[i].slice(0, depth).join('|');
+        const parentChainPrev = normalized[i - 1].slice(0, depth).join('|');
+        const isSameGroup = normalized[i][depth] === currentLabel && parentChainCurrent === parentChainPrev;
+
+        if (isSameGroup) {
+          span++;
+        } else {
+          rows[depth].push({ rawId: currentLabel, colSpan: span, isVariance: currentLabel.includes('Variance') });
+          currentLabel = normalized[i][depth];
+          span = 1;
+        }
+      }
+      rows[depth].push({ rawId: currentLabel, colSpan: span, isVariance: currentLabel.includes('Variance') });
+    }
+    return rows;
+  };
+
+  // --- PHASE 4: BUILD ROW HEADER GRID (rowSpan logic) ---
+  const buildRowHeaderGrid = (flatKeys: string[]): RowHeaderCell[][] => {
+    if (flatKeys.length === 0) return [];
+    
+    const splitKeys = flatKeys.map(k => k.startsWith('Variance (') ? [k] : k.split(' | '));
+    const maxDepth = Math.max(...splitKeys.map(k => k.length));
+
+    const normalized = splitKeys.map(k => {
+      const padded = [...k];
+      while (padded.length < maxDepth) padded.push(padded[padded.length - 1] || '');
+      return padded;
+    });
+
+    const grid: RowHeaderCell[][] = normalized.map(row => 
+      row.map(rawId => ({ rawId, rowSpan: 1, visible: true, isVariance: rawId.includes('Variance') }))
+    );
+
+    for (let depth = 0; depth < maxDepth; depth++) {
+      let spanCount = 1;
+      let spanStartRow = 0;
+
+      for (let r = 1; r < normalized.length; r++) {
+        const parentChainCurrent = normalized[r].slice(0, depth).join('|');
+        const parentChainPrev = normalized[r - 1].slice(0, depth).join('|');
+        const isSameGroup = normalized[r][depth] === normalized[r - 1][depth] && parentChainCurrent === parentChainPrev;
+
+        if (isSameGroup) {
+          spanCount++;
+          grid[r][depth].visible = false;
+          grid[spanStartRow][depth].rowSpan = spanCount;
+        } else {
+          spanCount = 1;
+          spanStartRow = r;
+        }
+      }
+    }
+    return grid;
+  };
+
   return { 
-    rowHeaders: Array.from(rowSet).sort(), 
-    colHeaders: Array.from(colSet).sort(), 
+    rowHeaders: sortedRowHeaders, 
+    colHeaders: sortedColHeaders, 
     dataMatrix: matrix,
-    coordMap: coords 
+    coordMap: coords,
+    colHeaderRows: buildColHeaderRows(sortedColHeaders),
+    rowHeaderGrid: buildRowHeaderGrid(sortedRowHeaders)
   };
 };

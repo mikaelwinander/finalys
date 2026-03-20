@@ -32,7 +32,7 @@ export const PivotSettingsModal: React.FC<PivotSettingsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-200 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
         
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
